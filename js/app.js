@@ -57,11 +57,18 @@ function fromB64(str) {
     return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
 }
 
-async function cloudLoad() {
+async function cloudLoad(isRetry = false) {
     try {
         const headers = { Accept: 'application/vnd.github.v3+json' };
         if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
         const r = await fetch(`${GITHUB_API}?t=${Date.now()}`, { headers, cache: 'no-store' });
+        // Token révoqué ou invalide : basculer sur le token injecté par CI
+        if (!isRetry && r.status === 401 && ghToken && DEFAULT_TOKEN !== '__SYNC_TOKEN__') {
+            localStorage.removeItem(TOKEN_KEY);
+            ghToken = DEFAULT_TOKEN;
+            localStorage.setItem(TOKEN_KEY, ghToken);
+            return cloudLoad(true);
+        }
         if (!r.ok) return null;
         const json = await r.json();
         dbSha = json.sha;
@@ -93,6 +100,12 @@ async function cloudSave(data) {
         } else if (r.status === 409) {
             // Conflit SHA : recharger puis réessayer
             await cloudLoad();
+            await cloudSave(data);
+        } else if (r.status === 401 && DEFAULT_TOKEN !== '__SYNC_TOKEN__') {
+            // Token révoqué : basculer sur le token injecté par CI
+            localStorage.removeItem(TOKEN_KEY);
+            ghToken = DEFAULT_TOKEN;
+            localStorage.setItem(TOKEN_KEY, ghToken);
             await cloudSave(data);
         } else {
             setSyncStatus('error');
