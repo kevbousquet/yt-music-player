@@ -48,8 +48,7 @@ const state = {
     shufflePos:      -1,
 };
 
-let ytPlayer    = null;
-let playerReady = false;
+let isPlaying = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -246,10 +245,7 @@ function playAt(realIdx) {
         const pos = state.shuffleOrder.indexOf(realIdx);
         state.shufflePos = pos !== -1 ? pos : 0;
     }
-    if (playerReady && ytPlayer) {
-        ytPlayer.loadVideoById(pl.tracks[realIdx].videoId);
-        document.getElementById('player-placeholder').style.display = 'none';
-    }
+    loadVideo(pl.tracks[realIdx].videoId);
     renderNowPlaying(); renderTracks();
 }
 
@@ -270,9 +266,10 @@ function playPrev() {
 }
 
 function togglePlayPause() {
-    if (!playerReady || !ytPlayer) return;
-    if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
-    else { if (state.trackIndex < 0) playAt(0); else ytPlayer.playVideo(); }
+    if (state.trackIndex < 0) { playAt(0); return; }
+    sendCmd(isPlaying ? 'pauseVideo' : 'playVideo');
+    isPlaying = !isPlaying;
+    setPlayBtn(isPlaying);
 }
 
 function toggleShuffle() {
@@ -461,21 +458,35 @@ function hideSearchModal() {
     document.getElementById('search-results').innerHTML = '<p class="empty">Tapez pour rechercher…</p>';
 }
 
-// ── YouTube IFrame API ────────────────────────────────────────────────────────
-window.onYouTubeIframeAPIReady = function () {
-    ytPlayer = new YT.Player('yt-player', {
-        height: '200', width: '100%',
-        playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1 },
-        events: {
-            onReady()        { playerReady = true; },
-            onStateChange(e) {
-                if (e.data === YT.PlayerState.ENDED) playNext();
-                setPlayBtn(e.data === YT.PlayerState.PLAYING);
-            },
-            onError()        { setTimeout(playNext, 1500); },
-        },
-    });
-};
+// ── Player yout-ube.com (sans publicités) ────────────────────────────────────
+function loadVideo(videoId) {
+    const iframe = document.getElementById('yt-iframe');
+    const origin = encodeURIComponent(location.origin || 'https://kevbousquet.github.io');
+    iframe.src   = `https://www.yout-ube.com/embed/${videoId}?enablejsapi=1&autoplay=1&rel=0&origin=${origin}`;
+    iframe.style.display = 'block';
+    document.getElementById('player-placeholder').style.display = 'none';
+    isPlaying = true;
+    setPlayBtn(true);
+}
+
+function sendCmd(func) {
+    const iframe = document.getElementById('yt-iframe');
+    iframe?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*');
+}
+
+// Écoute les événements du player (fin de vidéo, play/pause)
+window.addEventListener('message', e => {
+    try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (!data?.event) return;
+        if (data.event === 'onStateChange') {
+            if (data.info === 0) playNext(); // vidéo terminée → suivante
+            isPlaying = data.info === 1;
+            setPlayBtn(isPlaying);
+        }
+        if (data.event === 'onError') setTimeout(playNext, 1500);
+    } catch (_) {}
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
