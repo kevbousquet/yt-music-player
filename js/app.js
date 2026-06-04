@@ -758,9 +758,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }, 400);
         }
-        // Rafraîchir le SHA pour éviter les conflits 409, mais NE PAS écraser l'état local
-        // (le rechargement complet de la page au boot est la seule sync multi-appareils)
-        if (!pendingCloudSave) cloudLoad().then(f => { if (f) setSyncStatus('synced'); });
+        // Sync multi-appareils : mettre à jour seulement si le cloud est strictement plus récent
+        if (pendingCloudSave) return;
+        const fresh = await cloudLoad();
+        if (!fresh?.profiles) return;
+        const localTs = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}').lastModified || 0;
+        if ((fresh.lastModified || 0) <= localTs) return; // cloud pas plus récent → garder local
+        state.profiles = fresh.profiles;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+        if (state.activeProfileId && !state.profiles[state.activeProfileId]) {
+            state.activeProfileId = null; showProfileScreen();
+        } else if (state.activeProfileId) { render(); }
+        setSyncStatus('synced');
     });
 
     // ── Buttons ──
