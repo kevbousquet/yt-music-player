@@ -1,88 +1,63 @@
 'use strict';
 
-// ── Cloud sync ────────────────────────────────────────────────────────────────
-const BLOB_ID  = '019e928e-d683-702e-b2f7-cf31eb6b8313';
-const BLOB_URL = `https://jsonblob.com/api/jsonBlob/${BLOB_ID}`;
-let syncTimer  = null;
+// ── Config ────────────────────────────────────────────────────────────────────
+const BLOB_URL    = 'https://jsonblob.com/api/jsonBlob/019e928e-d683-702e-b2f7-cf31eb6b8313';
+const CACHE_KEY   = 'ytplayer_cache_v2';
+const PROFILE_KEY = 'ytplayer_profile';
+const COLORS      = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
-function setSyncStatus(status) {
+let syncTimer = null;
+
+// ── Cloud sync ────────────────────────────────────────────────────────────────
+function setSyncStatus(s) {
     const el = document.getElementById('sync-status');
     if (!el) return;
-    el.className = `sync-dot sync-${status}`;
-    const labels = { syncing: 'Synchronisation…', synced: 'Synchronisé ✓', error: 'Erreur sync', offline: 'Hors ligne' };
-    el.title = labels[status] || '';
+    el.className = `sync-dot sync-${s}`;
+    el.title = { syncing:'Synchronisation…', synced:'Synchronisé ✓', error:'Erreur sync', offline:'Hors ligne' }[s] || '';
 }
 
 async function cloudSave(data) {
     setSyncStatus('syncing');
     try {
-        const res = await fetch(BLOB_URL, {
+        const r = await fetch(BLOB_URL, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify(data),
         });
-        setSyncStatus(res.ok ? 'synced' : 'error');
-    } catch (_) {
-        setSyncStatus('offline');
-    }
+        setSyncStatus(r.ok ? 'synced' : 'error');
+    } catch (_) { setSyncStatus('offline'); }
 }
 
 async function cloudLoad() {
     try {
-        const res = await fetch(`${BLOB_URL}?t=${Date.now()}`, {
-            headers: { 'Accept': 'application/json' },
-            cache: 'no-store',
+        const r = await fetch(`${BLOB_URL}?t=${Date.now()}`, {
+            headers: { 'Accept': 'application/json' }, cache: 'no-store',
         });
-        if (res.ok) return await res.json();
+        if (r.ok) return await r.json();
     } catch (_) {}
     return null;
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const state = {
-    playlists: {},
-    activePlaylistId: null,
-    currentTrackIndex: -1,
-    isShuffled: false,
-    shuffleOrder: [],
-    shufflePos: -1,
+    profiles:        {},    // { [id]: { id, name, color, playlists, activePlaylistId } }
+    activeProfileId: null,
+    trackIndex:      -1,
+    isShuffled:      false,
+    shuffleOrder:    [],
+    shufflePos:      -1,
 };
 
 let ytPlayer    = null;
 let playerReady = false;
 
-// ── Local storage (offline cache) ─────────────────────────────────────────────
-const STORAGE_KEY = 'ytplayer_v1';
-
-function localSave(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-function localLoad() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch (_) { return null; }
-}
-
-function save() {
-    const data = { playlists: state.playlists, activePlaylistId: state.activePlaylistId };
-    localSave(data);
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => cloudSave(data), 800);
-}
-
-function applyData(data) {
-    if (!data?.playlists) return false;
-    state.playlists        = data.playlists;
-    state.activePlaylistId = data.activePlaylistId || null;
-    return true;
-}
-
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-function esc(str) {
-    return String(str)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function esc(s) {
+    return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function extractVideoId(url) {
@@ -91,13 +66,15 @@ function extractVideoId(url) {
         /youtu\.be\/([a-zA-Z0-9_-]{11})/,
         /shorts\/([a-zA-Z0-9_-]{11})/,
         /embed\/([a-zA-Z0-9_-]{11})/,
-    ]) {
-        const m = url.match(re); if (m) return m[1];
-    }
+    ]) { const m = url.match(re); if (m) return m[1]; }
     return null;
 }
 
-function activePL() { return state.playlists[state.activePlaylistId] || null; }
+function activeProfile() { return state.profiles[state.activeProfileId] || null; }
+function activePL() {
+    const p = activeProfile();
+    return p ? (p.playlists[p.activePlaylistId] || null) : null;
+}
 
 function shuffled(arr) {
     const a = [...arr];
@@ -108,63 +85,136 @@ function shuffled(arr) {
     return a;
 }
 
-// ── Playlist CRUD ─────────────────────────────────────────────────────────────
-function newPlaylist(name) {
+// ── Persistence ───────────────────────────────────────────────────────────────
+function save() {
+    const data = { version: 2, profiles: state.profiles };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => cloudSave(data), 800);
+}
+
+// ── Migration v1 → v2 ─────────────────────────────────────────────────────────
+function migrateV1(cloudData) {
+    if (!cloudData?.playlists) return null;
     const id = uid();
-    state.playlists[id] = { id, name, tracks: [] };
-    state.activePlaylistId = id;
+    return {
+        version: 2,
+        profiles: {
+            [id]: {
+                id, name: 'Mon profil', color: COLORS[0],
+                playlists: cloudData.playlists,
+                activePlaylistId: cloudData.activePlaylistId || null,
+            },
+        },
+    };
+}
+
+// ── Profile actions ───────────────────────────────────────────────────────────
+function selectProfile(id) {
+    if (!state.profiles[id]) return;
+    state.activeProfileId = id;
+    state.trackIndex      = -1;
+    state.shuffleOrder    = [];
+    state.shufflePos      = -1;
+    localStorage.setItem(PROFILE_KEY, id);
+    hideProfileScreen();
+    render();
+}
+
+function createProfile(name) {
+    if (!name.trim()) return;
+    const id       = uid();
+    const colorIdx = Object.keys(state.profiles).length % COLORS.length;
+    const plId     = uid();
+    state.profiles[id] = {
+        id, name: name.trim(), color: COLORS[colorIdx],
+        playlists: { [plId]: { id: plId, name: 'Ma playlist', tracks: [] } },
+        activePlaylistId: plId,
+    };
+    save();
+    selectProfile(id);
+}
+
+function deleteProfile(id) {
+    if (Object.keys(state.profiles).length <= 1) {
+        alert('Impossible de supprimer le seul profil existant.'); return;
+    }
+    if (!confirm(`Supprimer le profil "${state.profiles[id]?.name}" et toutes ses playlists ?`)) return;
+    delete state.profiles[id];
+    if (state.activeProfileId === id) {
+        state.activeProfileId = null;
+        localStorage.removeItem(PROFILE_KEY);
+    }
+    save();
+    renderProfileScreen();
+    if (!state.activeProfileId) showProfileScreen();
+}
+
+// ── Playlist actions ──────────────────────────────────────────────────────────
+function newPlaylist(name) {
+    const p = activeProfile(); if (!p) return;
+    const id = uid();
+    p.playlists[id] = { id, name, tracks: [] };
+    p.activePlaylistId = id;
     save(); render();
 }
 
 function delPlaylist(id) {
-    const pl = state.playlists[id];
-    if (!pl || !confirm(`Supprimer "${pl.name}" ?`)) return;
-    delete state.playlists[id];
-    const ids = Object.keys(state.playlists);
-    if (!ids.length) { newPlaylist('Ma playlist'); return; }
-    state.activePlaylistId = ids[0];
+    const p = activeProfile(); if (!p) return;
+    if (!confirm(`Supprimer "${p.playlists[id]?.name}" ?`)) return;
+    delete p.playlists[id];
+    const ids = Object.keys(p.playlists);
+    if (!ids.length) {
+        const nid = uid();
+        p.playlists[nid] = { id: nid, name: 'Ma playlist', tracks: [] };
+        p.activePlaylistId = nid;
+    } else { p.activePlaylistId = ids[0]; }
     save(); render();
 }
 
 function renamePlaylist(id, name) {
-    if (!name.trim() || !state.playlists[id]) return;
-    state.playlists[id].name = name.trim();
+    const p = activeProfile(); if (!p || !name.trim()) return;
+    p.playlists[id].name = name.trim();
     save(); renderPlaylists();
 }
 
 function switchPlaylist(id) {
-    if (id === state.activePlaylistId) return;
-    state.activePlaylistId  = id;
-    state.currentTrackIndex = -1;
-    state.shuffleOrder      = [];
-    state.shufflePos        = -1;
+    const p = activeProfile(); if (!p || id === p.activePlaylistId) return;
+    p.activePlaylistId = id;
+    state.trackIndex   = -1; state.shuffleOrder = []; state.shufflePos = -1;
     save(); render();
 }
 
-// ── Track CRUD ────────────────────────────────────────────────────────────────
+// ── Track actions ─────────────────────────────────────────────────────────────
 function addTrack(rawUrl, customTitle) {
-    const pl  = activePL(); if (!pl) return;
+    const pl = activePL(); if (!pl) return;
     const vid = extractVideoId(rawUrl.trim());
     if (!vid) { alert('Lien YouTube non reconnu.\nEx: https://www.youtube.com/watch?v=…'); return; }
     const idx = pl.tracks.length;
     pl.tracks.push({ id: uid(), videoId: vid, title: customTitle.trim() || 'Chargement…' });
     if (state.isShuffled) resetShuffle(pl.tracks.length);
     save(); renderTracks();
-    if (!customTitle.trim()) fetchTitle(vid, state.activePlaylistId, idx);
+    if (!customTitle.trim()) {
+        const profId = state.activeProfileId;
+        const plId   = activeProfile()?.activePlaylistId;
+        fetchTitle(vid, profId, plId, idx);
+    }
 }
 
-function fetchTitle(vid, plId, idx) {
+function fetchTitle(vid, profId, plId, idx) {
     fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`)
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => {
-            const pl = state.playlists[plId];
+            const pl = state.profiles[profId]?.playlists[plId];
             if (!pl?.tracks[idx]) return;
             pl.tracks[idx].title = d.title;
             save(); renderTracks();
-            if (state.activePlaylistId === plId && state.currentTrackIndex === idx) renderNowPlaying();
+            if (state.activeProfileId === profId &&
+                activeProfile()?.activePlaylistId === plId &&
+                state.trackIndex === idx) renderNowPlaying();
         })
         .catch(() => {
-            const pl = state.playlists[plId];
+            const pl = state.profiles[profId]?.playlists[plId];
             if (pl?.tracks[idx]?.title === 'Chargement…') {
                 pl.tracks[idx].title = `Piste ${idx + 1}`;
                 save(); renderTracks();
@@ -175,7 +225,7 @@ function fetchTitle(vid, plId, idx) {
 function delTrack(idx) {
     const pl = activePL(); if (!pl) return;
     pl.tracks.splice(idx, 1);
-    if (state.currentTrackIndex >= pl.tracks.length) state.currentTrackIndex = pl.tracks.length - 1;
+    if (state.trackIndex >= pl.tracks.length) state.trackIndex = pl.tracks.length - 1;
     if (state.isShuffled) resetShuffle(pl.tracks.length);
     save(); renderTracks();
 }
@@ -183,8 +233,7 @@ function delTrack(idx) {
 function clearTracks() {
     const pl = activePL();
     if (!pl?.tracks.length || !confirm('Vider la playlist ?')) return;
-    pl.tracks = [];
-    state.currentTrackIndex = -1; state.shuffleOrder = []; state.shufflePos = -1;
+    pl.tracks = []; state.trackIndex = -1; state.shuffleOrder = []; state.shufflePos = -1;
     save(); renderTracks(); renderNowPlaying();
 }
 
@@ -192,7 +241,7 @@ function clearTracks() {
 function playAt(realIdx) {
     const pl = activePL();
     if (!pl || realIdx < 0 || realIdx >= pl.tracks.length) return;
-    state.currentTrackIndex = realIdx;
+    state.trackIndex = realIdx;
     if (state.isShuffled) {
         const pos = state.shuffleOrder.indexOf(realIdx);
         state.shufflePos = pos !== -1 ? pos : 0;
@@ -207,29 +256,23 @@ function playAt(realIdx) {
 function playNext() {
     const pl = activePL(); if (!pl?.tracks.length) return;
     if (state.isShuffled && state.shuffleOrder.length) {
-        const next = (state.shufflePos + 1) % state.shuffleOrder.length;
-        state.shufflePos = next; playAt(state.shuffleOrder[next]);
-    } else {
-        playAt((state.currentTrackIndex + 1) % pl.tracks.length);
-    }
+        const n = (state.shufflePos + 1) % state.shuffleOrder.length;
+        state.shufflePos = n; playAt(state.shuffleOrder[n]);
+    } else { playAt((state.trackIndex + 1) % pl.tracks.length); }
 }
 
 function playPrev() {
     const pl = activePL(); if (!pl?.tracks.length) return;
     if (state.isShuffled && state.shuffleOrder.length) {
-        const prev = (state.shufflePos - 1 + state.shuffleOrder.length) % state.shuffleOrder.length;
-        state.shufflePos = prev; playAt(state.shuffleOrder[prev]);
-    } else {
-        const prev = state.currentTrackIndex <= 0 ? pl.tracks.length - 1 : state.currentTrackIndex - 1;
-        playAt(prev);
-    }
+        const n = (state.shufflePos - 1 + state.shuffleOrder.length) % state.shuffleOrder.length;
+        state.shufflePos = n; playAt(state.shuffleOrder[n]);
+    } else { playAt(state.trackIndex <= 0 ? pl.tracks.length - 1 : state.trackIndex - 1); }
 }
 
 function togglePlayPause() {
     if (!playerReady || !ytPlayer) return;
-    const ps = ytPlayer.getPlayerState();
-    if (ps === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
-    else { if (state.currentTrackIndex < 0) playAt(0); else ytPlayer.playVideo(); }
+    if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+    else { if (state.trackIndex < 0) playAt(0); else ytPlayer.playVideo(); }
 }
 
 function toggleShuffle() {
@@ -238,8 +281,8 @@ function toggleShuffle() {
     document.getElementById('btn-shuffle').classList.toggle('active', state.isShuffled);
     if (state.isShuffled && pl) {
         resetShuffle(pl.tracks.length);
-        if (state.currentTrackIndex >= 0) {
-            const pos = state.shuffleOrder.indexOf(state.currentTrackIndex);
+        if (state.trackIndex >= 0) {
+            const pos = state.shuffleOrder.indexOf(state.trackIndex);
             if (pos > 0) [state.shuffleOrder[0], state.shuffleOrder[pos]] = [state.shuffleOrder[pos], state.shuffleOrder[0]];
             state.shufflePos = 0;
         }
@@ -252,23 +295,34 @@ function resetShuffle(length) {
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
-function render() { renderPlaylists(); renderTracks(); renderNowPlaying(); }
+function render() { renderProfileBadge(); renderPlaylists(); renderTracks(); renderNowPlaying(); }
+
+function renderProfileBadge() {
+    const btn = document.getElementById('profile-badge');
+    const p   = activeProfile();
+    if (!btn || !p) return;
+    btn.textContent        = p.name[0].toUpperCase();
+    btn.style.background   = p.color;
+    btn.style.borderColor  = p.color;
+    btn.title              = `Profil : ${p.name} — Cliquer pour changer`;
+}
 
 function renderPlaylists() {
+    const p         = activeProfile();
     const container = document.getElementById('playlist-tabs');
-    container.innerHTML = Object.values(state.playlists).map(pl => `
-        <div class="playlist-tab ${pl.id === state.activePlaylistId ? 'active' : ''}" data-id="${pl.id}">
+    if (!p) { container.innerHTML = ''; return; }
+    container.innerHTML = Object.values(p.playlists).map(pl => `
+        <div class="playlist-tab ${pl.id === p.activePlaylistId ? 'active' : ''}" data-id="${pl.id}">
             <span class="tab-name" title="Double-clic pour renommer">${esc(pl.name)}</span>
             <button class="btn-del-pl" data-id="${pl.id}">&#xD7;</button>
         </div>`).join('');
-
     container.querySelectorAll('.playlist-tab').forEach(tab => {
         tab.addEventListener('click', e => { if (!e.target.classList.contains('btn-del-pl')) switchPlaylist(tab.dataset.id); });
         tab.querySelector('.tab-name').addEventListener('dblclick', () => {
-            const id = tab.dataset.id;
+            const id     = tab.dataset.id;
             const nameEl = tab.querySelector('.tab-name');
             const input  = document.createElement('input');
-            input.className = 'tab-rename'; input.value = state.playlists[id]?.name || '';
+            input.className = 'tab-rename'; input.value = p.playlists[id]?.name || '';
             nameEl.replaceWith(input); input.focus(); input.select();
             const done = () => renamePlaylist(id, input.value);
             input.addEventListener('blur', done);
@@ -283,7 +337,7 @@ function renderTracks() {
     const el = document.getElementById('track-list');
     if (!pl?.tracks.length) { el.innerHTML = '<p class="empty">Aucune piste — collez un lien YouTube ci-dessous.</p>'; return; }
     el.innerHTML = pl.tracks.map((t, i) => `
-        <div class="track-item ${i === state.currentTrackIndex ? 'active' : ''}" data-idx="${i}">
+        <div class="track-item ${i === state.trackIndex ? 'active' : ''}" data-idx="${i}">
             <span class="t-num">${i + 1}</span>
             <span class="t-name" title="${esc(t.title)}">${esc(t.title)}</span>
             <button class="btn-del-t" data-idx="${i}">&#xD7;</button>
@@ -295,19 +349,45 @@ function renderTracks() {
 }
 
 function renderNowPlaying() {
-    const pl = activePL();
+    const pl      = activePL();
     const titleEl = document.getElementById('track-title');
     const metaEl  = document.getElementById('track-meta');
-    if (!pl || state.currentTrackIndex < 0 || !pl.tracks[state.currentTrackIndex]) {
+    if (!pl || state.trackIndex < 0 || !pl.tracks[state.trackIndex]) {
         titleEl.textContent = '–'; metaEl.textContent = ''; return;
     }
-    const t = pl.tracks[state.currentTrackIndex];
+    const t = pl.tracks[state.trackIndex];
     titleEl.textContent = t.title;
-    metaEl.textContent  = `Piste ${state.currentTrackIndex + 1} / ${pl.tracks.length}  —  ${pl.name}`;
+    metaEl.textContent  = `Piste ${state.trackIndex + 1} / ${pl.tracks.length}  —  ${pl.name}`;
 }
 
 function setPlayBtn(playing) {
     document.getElementById('btn-play-pause').innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+}
+
+// ── Profile screen ────────────────────────────────────────────────────────────
+function showProfileScreen() {
+    document.getElementById('profile-screen').style.display = 'flex';
+    renderProfileScreen();
+}
+
+function hideProfileScreen() {
+    document.getElementById('profile-screen').style.display = 'none';
+}
+
+function renderProfileScreen() {
+    const list = document.getElementById('profile-list');
+    list.innerHTML = Object.values(state.profiles).map(p => `
+        <div class="profile-card" data-id="${p.id}">
+            <div class="profile-avatar" style="background:${p.color}">${esc(p.name[0].toUpperCase())}</div>
+            <div class="profile-name">${esc(p.name)}</div>
+            <button class="btn-del-profile" data-id="${p.id}" title="Supprimer">&#xD7;</button>
+        </div>`).join('');
+    list.querySelectorAll('.profile-card').forEach(card => {
+        card.addEventListener('click', e => { if (!e.target.classList.contains('btn-del-profile')) selectProfile(card.dataset.id); });
+    });
+    list.querySelectorAll('.btn-del-profile').forEach(btn => {
+        btn.addEventListener('click', () => deleteProfile(btn.dataset.id));
+    });
 }
 
 // ── YouTube IFrame API ────────────────────────────────────────────────────────
@@ -330,42 +410,53 @@ window.onYouTubeIframeAPIReady = function () {
 document.addEventListener('DOMContentLoaded', async () => {
     setSyncStatus('syncing');
 
-    // Load from cloud first, fall back to localStorage
-    const cloudData = await cloudLoad();
-    if (cloudData?.playlists && Object.keys(cloudData.playlists).length) {
-        applyData(cloudData);
-        localSave(cloudData);
+    // 1. Load data (cloud first, then local cache)
+    let data = await cloudLoad();
+    if (!data) {
+        data = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+        setSyncStatus(data ? 'offline' : 'offline');
+    } else {
         setSyncStatus('synced');
-    } else {
-        const local = localLoad();
-        applyData(local);
-        setSyncStatus(cloudData === null ? 'offline' : 'synced');
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
     }
 
-    // Ensure valid state
-    if (!Object.keys(state.playlists).length) {
-        newPlaylist('Ma playlist'); // calls save() + render()
-    } else {
-        if (!state.activePlaylistId || !state.playlists[state.activePlaylistId]) {
-            state.activePlaylistId = Object.keys(state.playlists)[0];
-        }
-        render();
+    // 2. Migrate v1 → v2 if needed
+    if (data && data.version !== 2) {
+        data = migrateV1(data) || { version: 2, profiles: {} };
+        cloudSave(data);
     }
 
-    // Re-sync when user comes back to the tab
+    state.profiles = data?.profiles || {};
+
+    // 3. Restore profile for this device
+    const savedId = localStorage.getItem(PROFILE_KEY);
+    if (savedId && state.profiles[savedId]) {
+        selectProfile(savedId);
+    } else {
+        showProfileScreen();
+    }
+
+    // 4. Re-sync when coming back to the tab
     document.addEventListener('visibilitychange', async () => {
         if (document.hidden) return;
-        const data = await cloudLoad();
-        if (!data?.playlists) return;
-        applyData(data);
-        if (!state.playlists[state.activePlaylistId]) {
-            state.activePlaylistId = Object.keys(state.playlists)[0] || null;
-        }
-        render();
+        const fresh = await cloudLoad();
+        if (!fresh?.profiles) return;
+        state.profiles = fresh.profiles;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+        if (state.activeProfileId && !state.profiles[state.activeProfileId]) {
+            state.activeProfileId = null; showProfileScreen();
+        } else if (state.activeProfileId) { render(); }
         setSyncStatus('synced');
     });
 
     // ── Buttons ──
+    document.getElementById('btn-add-profile').addEventListener('click', () => {
+        const name = prompt('Prénom ou pseudo (ex : Evona, Ma femme…) :');
+        if (name?.trim()) createProfile(name.trim());
+    });
+
+    document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
+
     document.getElementById('btn-new-playlist').addEventListener('click', () => {
         const name = prompt('Nom de la nouvelle playlist :');
         if (name?.trim()) newPlaylist(name.trim());

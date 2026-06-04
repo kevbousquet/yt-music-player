@@ -7,12 +7,23 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+    <!-- ── Écran de sélection de profil ── -->
+    <div class="profile-screen" id="profile-screen">
+        <div class="profile-screen-content">
+            <h2 class="profile-screen-title">Qui écoute ?</h2>
+            <div class="profile-list" id="profile-list"></div>
+            <button class="btn-add-profile" id="btn-add-profile">+ Ajouter un profil</button>
+        </div>
+    </div>
+
+    <!-- ── Application principale ── -->
     <div class="app">
 
-        <!-- ── Sidebar ── -->
         <aside class="sidebar">
             <div class="sidebar-top">
                 <span class="app-title">&#9835; YT Player</span>
+                <button class="profile-badge" id="profile-badge" title="Changer de profil"></button>
                 <span class="sync-dot" id="sync-status" title="Statut sync"></span>
             </div>
 
@@ -42,7 +53,6 @@
             </div>
         </aside>
 
-        <!-- ── Player ── -->
         <main class="main">
             <div class="player-wrap">
                 <div class="yt-box">
