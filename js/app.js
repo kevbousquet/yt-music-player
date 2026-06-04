@@ -619,27 +619,49 @@ window.onYouTubeIframeAPIReady = function () {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    setSyncStatus('syncing');
 
-    // 1. Load data (cloud first, then local cache)
-    let data = await cloudLoad();
-    if (!data) {
-        data = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-        setSyncStatus(data ? 'offline' : 'offline');
+    // 0. TOKEN EN PREMIER — avant tout appel réseau
+    let isNewToken = false;
+    if (location.hash.startsWith('#sync=')) {
+        ghToken    = decodeURIComponent(location.hash.slice(6));
+        isNewToken = true;
+        localStorage.setItem(TOKEN_KEY, ghToken);
+        history.replaceState(null, '', location.pathname);
     } else {
-        setSyncStatus('synced');
-        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        ghToken = localStorage.getItem(TOKEN_KEY);
     }
 
-    // 2. Migrate v1 → v2 if needed
+    setSyncStatus(ghToken ? 'syncing' : 'offline');
+
+    // 1. Charger depuis le cloud
+    let data      = await cloudLoad();
+    const local   = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    const hasCloud = data?.profiles && Object.keys(data.profiles).length > 0;
+    const hasLocal = local?.profiles && Object.keys(local.profiles).length > 0;
+
+    if (!hasCloud && hasLocal) {
+        // Cloud vide mais données locales présentes : migration locale → cloud
+        data = local;
+        if (ghToken) cloudSave(data); // push au cloud
+    } else if (data) {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    } else {
+        data = local;
+    }
+
+    setSyncStatus(ghToken ? (data ? 'synced' : 'error') : 'offline');
+
+    if (isNewToken) showToast('✓ Synchronisation configurée sur cet appareil !');
+
+    // 2. Migrate v1 → v2 si nécessaire
     if (data && data.version !== 2) {
         data = migrateV1(data) || { version: 2, profiles: {} };
-        cloudSave(data);
+        if (ghToken) cloudSave(data);
     }
 
     state.profiles = data?.profiles || {};
 
-    // 3. Restore profile for this device
+    // 3. Restaurer le profil de cet appareil
     const savedId = localStorage.getItem(PROFILE_KEY);
     if (savedId && state.profiles[savedId]) {
         selectProfile(savedId);
@@ -667,16 +689,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
-
-    // ── Token sync : détecte #sync=TOKEN dans l'URL ──
-    if (location.hash.startsWith('#sync=')) {
-        ghToken = decodeURIComponent(location.hash.slice(6));
-        localStorage.setItem(TOKEN_KEY, ghToken);
-        history.replaceState(null, '', location.pathname);
-        showToast('✓ Synchronisation configurée sur cet appareil !');
-    } else {
-        ghToken = localStorage.getItem(TOKEN_KEY);
-    }
 
     // Bouton ⚙ : affiche le lien de configuration pour un autre appareil
     document.getElementById('btn-sync-setup').addEventListener('click', () => {
