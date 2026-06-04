@@ -1,12 +1,15 @@
 'use strict';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const BLOB_URL    = 'https://jsonblob.com/api/jsonBlob/019e928e-d683-702e-b2f7-cf31eb6b8313';
+const GITHUB_API  = 'https://api.github.com/repos/kevbousquet/yt-music-player/contents/db.json';
 const CACHE_KEY   = 'ytplayer_cache_v2';
 const PROFILE_KEY = 'ytplayer_profile';
+const TOKEN_KEY   = 'ytplayer_gh_token';
 const COLORS      = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
 let syncTimer = null;
+let ghToken   = null;   // GitHub Personal Access Token
+let dbSha     = null;   // SHA du fichier db.json (requis pour les mises à jour)
 
 // ── PWA : Service Worker + installation ──────────────────────────────────────
 if ('serviceWorker' in navigator) {
@@ -27,34 +30,70 @@ window.addEventListener('appinstalled', () => {
     if (banner) banner.style.display = 'none';
 });
 
-// ── Cloud sync ────────────────────────────────────────────────────────────────
+// ── Cloud sync via GitHub API ─────────────────────────────────────────────────
 function setSyncStatus(s) {
     const el = document.getElementById('sync-status');
     if (!el) return;
     el.className = `sync-dot sync-${s}`;
-    el.title = { syncing:'Synchronisation…', synced:'Synchronisé ✓', error:'Erreur sync', offline:'Hors ligne' }[s] || '';
+    el.title = {
+        syncing: 'Synchronisation…',
+        synced:  'Synchronisé ✓',
+        error:   'Erreur sync',
+        offline: ghToken ? 'Hors ligne' : 'Sync non configurée — voir ⚙',
+    }[s] || '';
 }
 
-async function cloudSave(data) {
-    setSyncStatus('syncing');
-    try {
-        const r = await fetch(BLOB_URL, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        setSyncStatus(r.ok ? 'synced' : 'error');
-    } catch (_) { setSyncStatus('offline'); }
+function toB64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = ''; bytes.forEach(b => bin += String.fromCharCode(b));
+    return btoa(bin);
+}
+function fromB64(str) {
+    const bin = atob(str.replace(/\n/g, ''));
+    return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
 }
 
 async function cloudLoad() {
     try {
-        const r = await fetch(`${BLOB_URL}?t=${Date.now()}`, {
-            headers: { 'Accept': 'application/json' }, cache: 'no-store',
+        const headers = { Accept: 'application/vnd.github.v3+json' };
+        if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
+        const r = await fetch(`${GITHUB_API}?t=${Date.now()}`, { headers, cache: 'no-store' });
+        if (!r.ok) return null;
+        const json = await r.json();
+        dbSha = json.sha;
+        return JSON.parse(fromB64(json.content));
+    } catch (_) { return null; }
+}
+
+async function cloudSave(data) {
+    if (!ghToken) { setSyncStatus('offline'); return; }
+    setSyncStatus('syncing');
+    if (!dbSha) await cloudLoad();
+    try {
+        const r = await fetch(GITHUB_API, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${ghToken}`,
+                'Content-Type': 'application/json',
+                Accept: 'application/vnd.github.v3+json',
+            },
+            body: JSON.stringify({
+                message: 'Sync playlists',
+                content: toB64(JSON.stringify(data)),
+                sha: dbSha,
+            }),
         });
-        if (r.ok) return await r.json();
-    } catch (_) {}
-    return null;
+        if (r.ok) {
+            dbSha = (await r.json()).content.sha;
+            setSyncStatus('synced');
+        } else if (r.status === 409) {
+            // Conflit SHA : recharger puis réessayer
+            await cloudLoad();
+            await cloudSave(data);
+        } else {
+            setSyncStatus('error');
+        }
+    } catch (_) { setSyncStatus('offline'); }
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -383,6 +422,14 @@ function renderNowPlaying() {
     metaEl.textContent  = `Piste ${state.trackIndex + 1} / ${pl.tracks.length}  —  ${pl.name}`;
 }
 
+function showToast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg; t.className = 'toast toast-show';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.className = 'toast', 2500);
+}
+
 function setPlayBtn(playing) {
     document.getElementById('btn-play-pause').innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
 }
@@ -620,6 +667,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
+
+    // ── Token sync : détecte #sync=TOKEN dans l'URL ──
+    if (location.hash.startsWith('#sync=')) {
+        ghToken = decodeURIComponent(location.hash.slice(6));
+        localStorage.setItem(TOKEN_KEY, ghToken);
+        history.replaceState(null, '', location.pathname);
+        showToast('✓ Synchronisation configurée sur cet appareil !');
+    } else {
+        ghToken = localStorage.getItem(TOKEN_KEY);
+    }
+
+    // Bouton ⚙ : affiche le lien de configuration pour un autre appareil
+    document.getElementById('btn-sync-setup').addEventListener('click', () => {
+        if (!ghToken) {
+            alert('Aucun token configuré sur cet appareil.\nOuvre d\'abord le lien de configuration depuis le PC.');
+            return;
+        }
+        const url = `${location.origin}${location.pathname}#sync=${encodeURIComponent(ghToken)}`;
+        document.getElementById('sync-setup-url').value = url;
+        document.getElementById('sync-setup-modal').style.display = 'flex';
+    });
+    document.getElementById('btn-copy-sync-url').addEventListener('click', () => {
+        const input = document.getElementById('sync-setup-url');
+        input.select(); navigator.clipboard?.writeText(input.value);
+        showToast('✓ Lien copié !');
+    });
+    document.getElementById('btn-close-sync-modal').addEventListener('click', () => {
+        document.getElementById('sync-setup-modal').style.display = 'none';
+    });
 
     // ── Media session (contrôles verrouillage) ──
     setupMediaSession();

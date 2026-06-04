@@ -28,6 +28,16 @@ body {
     height: 100vh;
 }
 
+/* ── Toast ── */
+.toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--accent);
+    color: var(--text); padding: 10px 20px; border-radius: 50px;
+    font-size: 13px; z-index: 300; opacity: 0;
+    transition: opacity .25s; pointer-events: none; white-space: nowrap;
+}
+.toast-show { opacity: 1; }
+
 /* ── Bannière installation PWA ── */
 .install-banner {
     display: none;
