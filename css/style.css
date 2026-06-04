@@ -1,0 +1,388 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg:         #0d0d12;
+    --sidebar:    #13131a;
+    --surface:    #1b1b25;
+    --border:     #27273a;
+    --accent:     #7c6af7;
+    --accent-dim: #2e2860;
+    --text:       #e6e6f0;
+    --dim:        #7777a0;
+    --danger:     #e94560;
+    --r:          8px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    font-size: 14px;
+}
+
+/* ── Layout ── */
+.app {
+    display: flex;
+    height: 100vh;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+    width: 320px;
+    min-width: 260px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar-top {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.app-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.3px;
+}
+
+/* ── Sections ── */
+.section {
+    padding: 12px 16px 0;
+    flex-shrink: 0;
+}
+
+.tracks-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0;
+    margin-top: 8px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+}
+
+.section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    color: var(--dim);
+    text-transform: uppercase;
+}
+
+.track-actions { display: flex; gap: 5px; }
+
+/* ── Icon button ── */
+.btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .12s, border-color .12s, color .12s;
+    flex-shrink: 0;
+}
+.btn-icon:hover    { background: var(--surface); border-color: var(--accent); color: var(--text); }
+.btn-icon.active   { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.btn-icon.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+/* ── Playlist tabs ── */
+.playlist-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    max-height: 160px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.playlist-tabs::-webkit-scrollbar { width: 3px; }
+.playlist-tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.playlist-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 9px;
+    border-radius: var(--r);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background .12s, border-color .12s;
+    min-width: 0;
+}
+.playlist-tab:hover  { background: var(--surface); }
+.playlist-tab.active { background: var(--surface); border-color: var(--accent-dim); }
+
+.tab-name {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.playlist-tab.active .tab-name { color: var(--accent); font-weight: 600; }
+
+.tab-rename {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 13px;
+    outline: none;
+    min-width: 0;
+}
+
+.btn-del-pl {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    padding: 0 1px;
+    opacity: 0;
+    transition: opacity .12s, color .12s;
+    flex-shrink: 0;
+}
+.playlist-tab:hover .btn-del-pl { opacity: 1; }
+.btn-del-pl:hover { color: var(--danger); }
+
+/* ── Track list ── */
+.track-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-right: 3px;
+}
+
+.track-list::-webkit-scrollbar { width: 3px; }
+.track-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.track-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 9px;
+    border-radius: var(--r);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background .12s, border-color .12s;
+    min-width: 0;
+}
+.track-item:hover  { background: var(--surface); }
+.track-item.active { background: var(--accent-dim); border-color: var(--accent); }
+
+.t-num {
+    font-size: 11px;
+    color: var(--dim);
+    min-width: 18px;
+    text-align: right;
+    flex-shrink: 0;
+}
+.track-item.active .t-num { color: var(--accent); }
+
+.t-name {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.track-item.active .t-name { color: var(--accent); font-weight: 500; }
+
+.btn-del-t {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    padding: 0 1px;
+    opacity: 0;
+    transition: opacity .12s, color .12s;
+    flex-shrink: 0;
+}
+.track-item:hover .btn-del-t { opacity: 1; }
+.btn-del-t:hover { color: var(--danger); }
+
+.empty {
+    color: var(--dim);
+    font-size: 13px;
+    text-align: center;
+    padding: 28px 12px;
+    line-height: 1.7;
+}
+
+/* ── Add form ── */
+.add-form {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    flex-shrink: 0;
+}
+
+.inp {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--r);
+    padding: 9px 11px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .15s;
+}
+.inp::placeholder { color: var(--dim); }
+.inp:focus { border-color: var(--accent); }
+
+.btn-primary {
+    width: 100%;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px;
+    border-radius: var(--r);
+    cursor: pointer;
+    transition: background .15s;
+}
+.btn-primary:hover  { background: #6a58e0; }
+.btn-primary:active { background: #5947cc; }
+
+/* ── Main player ── */
+.main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+}
+
+.player-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    width: 100%;
+    max-width: 520px;
+    padding: 32px 24px;
+}
+
+.yt-box {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+}
+
+.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--dim);
+    text-align: center;
+    line-height: 1.8;
+    font-size: 14px;
+}
+
+.placeholder-icon {
+    font-size: 36px;
+    margin-bottom: 10px;
+    opacity: 0.4;
+}
+
+#yt-player { display: block; width: 100%; }
+
+/* ── Now playing ── */
+.now-playing { text-align: center; width: 100%; }
+
+.np-title {
+    font-size: 17px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    margin-bottom: 5px;
+}
+
+.np-meta { font-size: 12px; color: var(--dim); }
+
+/* ── Controls ── */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.ctrl-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .15s, background .15s, color .15s;
+}
+.ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.ctrl-main {
+    width: 64px;
+    height: 64px;
+    font-size: 22px;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+.ctrl-main:hover { background: #6a58e0; border-color: #6a58e0; color: #fff; }
+.ctrl-main:active { background: #5947cc; }
+
+/* ── Hint ── */
+.shortcuts-hint {
+    font-size: 11px;
+    color: var(--dim);
+    text-align: center;
+}
+kbd {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-family: inherit;
+}

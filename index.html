@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YT Music Player</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app">
+
+        <!-- ── Sidebar ── -->
+        <aside class="sidebar">
+            <div class="sidebar-top">
+                <span class="app-title">&#9835; YT Player</span>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <span class="section-label">PLAYLISTS</span>
+                    <button class="btn-icon" id="btn-new-playlist" title="Nouvelle playlist">+</button>
+                </div>
+                <div class="playlist-tabs" id="playlist-tabs"></div>
+            </div>
+
+            <div class="section tracks-section">
+                <div class="section-header">
+                    <span class="section-label">PISTES</span>
+                    <div class="track-actions">
+                        <button class="btn-icon" id="btn-shuffle" title="Lecture aléatoire">&#8652;</button>
+                        <button class="btn-icon danger" id="btn-clear" title="Vider la playlist">&#8998;</button>
+                    </div>
+                </div>
+                <div class="track-list" id="track-list"></div>
+            </div>
+
+            <div class="add-form">
+                <input type="text" id="url-input" class="inp" placeholder="Coller un lien YouTube…">
+                <input type="text" id="title-input" class="inp" placeholder="Titre personnalisé (optionnel)">
+                <button class="btn-primary" id="btn-add">Ajouter à la playlist</button>
+            </div>
+        </aside>
+
+        <!-- ── Player ── -->
+        <main class="main">
+            <div class="player-wrap">
+                <div class="yt-box">
+                    <div id="player-placeholder" class="placeholder">
+                        <div>
+                            <div class="placeholder-icon">&#9835;</div>
+                            <p>Ajoutez des musiques<br>et lancez la lecture</p>
+                        </div>
+                    </div>
+                    <div id="yt-player"></div>
+                </div>
+
+                <div class="now-playing">
+                    <div class="np-title" id="track-title">–</div>
+                    <div class="np-meta" id="track-meta"></div>
+                </div>
+
+                <div class="controls">
+                    <button class="ctrl-btn" id="btn-prev" title="Précédent">&#9198;</button>
+                    <button class="ctrl-btn ctrl-main" id="btn-play-pause" title="Lecture / Pause">&#9654;</button>
+                    <button class="ctrl-btn" id="btn-next" title="Suivant">&#9197;</button>
+                </div>
+
+                <div class="shortcuts-hint">
+                    Raccourcis : <kbd>Espace</kbd> play/pause &nbsp;·&nbsp; <kbd>←</kbd> précédent &nbsp;·&nbsp; <kbd>→</kbd> suivant
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <script src="js/app.js"></script>
+    <script async src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
