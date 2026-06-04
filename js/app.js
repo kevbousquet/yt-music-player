@@ -1,15 +1,17 @@
 'use strict';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const GITHUB_API  = 'https://api.github.com/repos/kevbousquet/yt-music-player/contents/db.json';
-const CACHE_KEY   = 'ytplayer_cache_v2';
-const PROFILE_KEY = 'ytplayer_profile';
-const TOKEN_KEY   = 'ytplayer_gh_token';
-const COLORS      = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
+const GITHUB_API       = 'https://api.github.com/repos/kevbousquet/yt-music-player/contents/db.json';
+const CACHE_KEY        = 'ytplayer_cache_v2';
+const PROFILE_KEY      = 'ytplayer_profile';
+const TOKEN_KEY        = 'ytplayer_gh_token';
+const YT_API_KEY_STORE = 'ytplayer_yt_api_key';
+const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
 let syncTimer = null;
 let ghToken   = null;
 let dbSha     = null;
+let ytApiKey  = null;
 
 // ── PWA : Service Worker + installation ──────────────────────────────────────
 if ('serviceWorker' in navigator) {
@@ -484,47 +486,8 @@ function renderProfileScreen() {
     });
 }
 
-// ── YouTube Search (Piped + Invidious fallback) ───────────────────────────────
+// ── YouTube Search (API officielle Google) ────────────────────────────────────
 let searchDebounce = null;
-
-// Chaque entrée : { url(query), parse(data) → [{videoId,title,author,lengthSeconds}] }
-const SEARCH_APIS = [
-    {
-        url: q => `https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(q)}&filter=videos`,
-        parse: d => (d.items || []).filter(i => i.type === 'stream' && i.url).map(i => ({
-            videoId: new URLSearchParams((i.url || '').split('?')[1]).get('v'),
-            title: i.title || '',
-            author: i.uploaderName || '',
-            lengthSeconds: i.duration || 0,
-        })).filter(i => i.videoId),
-    },
-    {
-        url: q => `https://api.piped.projectsegfau.lt/search?q=${encodeURIComponent(q)}&filter=videos`,
-        parse: d => (d.items || []).filter(i => i.type === 'stream' && i.url).map(i => ({
-            videoId: new URLSearchParams((i.url || '').split('?')[1]).get('v'),
-            title: i.title || '',
-            author: i.uploaderName || '',
-            lengthSeconds: i.duration || 0,
-        })).filter(i => i.videoId),
-    },
-    {
-        url: q => `https://pipedapi.adminforge.de/search?q=${encodeURIComponent(q)}&filter=videos`,
-        parse: d => (d.items || []).filter(i => i.type === 'stream' && i.url).map(i => ({
-            videoId: new URLSearchParams((i.url || '').split('?')[1]).get('v'),
-            title: i.title || '',
-            author: i.uploaderName || '',
-            lengthSeconds: i.duration || 0,
-        })).filter(i => i.videoId),
-    },
-    {
-        url: q => `https://inv.nadeko.net/api/v1/search?q=${encodeURIComponent(q)}&type=video&fields=videoId,title,author,lengthSeconds`,
-        parse: d => d,
-    },
-    {
-        url: q => `https://invidious.privacyredirect.com/api/v1/search?q=${encodeURIComponent(q)}&type=video&fields=videoId,title,author,lengthSeconds`,
-        parse: d => d,
-    },
-];
 
 function formatDuration(s) {
     if (!s) return '–';
@@ -535,26 +498,73 @@ function formatDuration(s) {
     return `${m}:${String(sec).padStart(2,'0')}`;
 }
 
+function configureYtApiKey() {
+    const current = ytApiKey ? `\nClé actuelle : ${ytApiKey.slice(0, 8)}…` : '';
+    const key = prompt(
+        `Clé API YouTube (gratuite — 100 recherches/jour)${current}\n\n` +
+        `Comment obtenir votre clé gratuite :\n` +
+        `1. Allez sur console.cloud.google.com\n` +
+        `2. Créez un projet (ou choisissez-en un)\n` +
+        `3. APIs et services → Bibliothèque → "YouTube Data API v3" → Activer\n` +
+        `4. Identifiants → Créer des identifiants → Clé API\n\n` +
+        `Collez votre clé ici :`
+    );
+    if (key?.trim()) {
+        ytApiKey = key.trim();
+        localStorage.setItem(YT_API_KEY_STORE, ytApiKey);
+        showToast('✓ Clé API YouTube configurée !');
+    }
+}
+
 async function searchYT(query) {
     const el = document.getElementById('search-results');
     el.innerHTML = '<p class="empty search-loading">Recherche en cours…</p>';
 
-    // Tous les serveurs en parallèle — le premier qui répond gagne
-    const attempts = SEARCH_APIS.map(api =>
-        fetch(api.url(query), { signal: AbortSignal.timeout(6000) })
-            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-            .then(d => {
-                const results = api.parse(d);
-                if (!results?.length) throw new Error('empty');
-                return results;
-            })
-    );
+    if (!ytApiKey) {
+        el.innerHTML = `
+            <div class="empty" style="text-align:center;padding:24px 16px">
+                <div style="font-size:28px;margin-bottom:12px">🔑</div>
+                <p style="margin-bottom:12px">La recherche nécessite une clé API YouTube gratuite.<br>Les anciens serveurs tiers sont hors ligne.</p>
+                <button class="btn-primary" id="btn-configure-yt-api" style="width:auto;padding:0 20px">Configurer la clé API (gratuit)</button>
+            </div>`;
+        document.getElementById('btn-configure-yt-api').addEventListener('click', () => {
+            configureYtApiKey();
+            if (ytApiKey) searchYT(query);
+        });
+        return;
+    }
 
     try {
-        const results = await Promise.any(attempts);
+        const r = await fetch(
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=15&q=${encodeURIComponent(query)}&key=${ytApiKey}`,
+            { signal: AbortSignal.timeout(8000) }
+        );
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            if (r.status === 400 || r.status === 403) {
+                el.innerHTML = `
+                    <div class="empty" style="text-align:center;padding:16px">
+                        <p style="margin-bottom:10px">Clé API invalide ou quota dépassé (${r.status}).</p>
+                        <button class="btn-primary" id="btn-reconfig-yt-api" style="width:auto;padding:0 16px">Reconfigurer la clé</button>
+                    </div>`;
+                document.getElementById('btn-reconfig-yt-api').addEventListener('click', () => {
+                    configureYtApiKey();
+                    if (ytApiKey) searchYT(query);
+                });
+                return;
+            }
+            throw new Error();
+        }
+        const data = await r.json();
+        const results = (data.items || []).map(i => ({
+            videoId: i.id.videoId,
+            title:   i.snippet.title,
+            author:  i.snippet.channelTitle,
+            lengthSeconds: 0,
+        }));
         renderSearchResults(results);
     } catch (_) {
-        el.innerHTML = '<p class="empty">Recherche indisponible.<br>Colle directement un lien YouTube ci-dessous.</p>';
+        el.innerHTML = '<p class="empty">Erreur réseau. Vérifiez votre connexion.</p>';
     }
 }
 
@@ -655,6 +665,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ghToken = localStorage.getItem('ytplayer_gh_token');
     }
 
+    ytApiKey = localStorage.getItem(YT_API_KEY_STORE);
     setSyncStatus(ghToken ? 'syncing' : 'offline');
 
     // 1. Charger depuis le cloud
@@ -792,6 +803,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('url-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') document.getElementById('btn-add').click();
+    });
+
+    // Auto-convert any YouTube URL to youtube-nocookie embed format on paste
+    document.getElementById('url-input').addEventListener('paste', () => {
+        setTimeout(() => {
+            const input = document.getElementById('url-input');
+            const vid = extractVideoId(input.value.trim());
+            if (vid) input.value = `https://www.youtube-nocookie.com/embed/${vid}`;
+        }, 0);
     });
 
     document.getElementById('btn-play-pause').addEventListener('click', togglePlayPause);
