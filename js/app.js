@@ -164,6 +164,7 @@ let playerReady = false;
 let silentAudioCtx = null;
 let silentAudioSrc = null;
 let wasPlayingOnHide = false;
+let isInBackground = false;
 
 function startSilentAudio() {
     if (silentAudioCtx) return;
@@ -693,7 +694,12 @@ window.onYouTubeIframeAPIReady = function () {
                 if (e.data === YT.PlayerState.ENDED) playNext();
                 const playing = e.data === YT.PlayerState.PLAYING;
                 setPlayBtn(playing);
-                if (playing) startSilentAudio(); else stopSilentAudio();
+                if (playing) startSilentAudio();
+                else if (!isInBackground) stopSilentAudio();
+                // YouTube se met en pause tout seul en arrière-plan : tenter de relancer
+                if (e.data === YT.PlayerState.PAUSED && isInBackground && wasPlayingOnHide) {
+                    setTimeout(() => { if (isInBackground) try { ytPlayer?.playVideo(); } catch (_) {} }, 600);
+                }
                 if ('mediaSession' in navigator) {
                     navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
                 }
@@ -773,10 +779,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 4. Re-sync when coming back to the tab + resume si YouTube a mis en pause en arrière-plan
     document.addEventListener('visibilitychange', async () => {
         if (document.hidden) {
+            isInBackground = true;
             wasPlayingOnHide = playerReady && ytPlayer &&
                 ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
             return;
         }
+        isInBackground = false;
+        // Réactiver le contexte audio si le navigateur l'a suspendu
+        if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
         // Retour au premier plan : reprendre si YouTube nous a mis en pause
         if (wasPlayingOnHide && playerReady && ytPlayer) {
             wasPlayingOnHide = false;
