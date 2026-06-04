@@ -12,6 +12,7 @@ const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f9
 
 let syncTimer        = null;
 let pendingCloudSave = false;
+let lastCloudSaveTime = 0;
 let ghToken          = null;
 let dbSha            = null;
 let ytApiKey         = null;
@@ -98,6 +99,7 @@ async function cloudSave(data) {
         });
         if (r.ok) {
             dbSha = (await r.json()).content.sha;
+            lastCloudSaveTime = Date.now();
             pendingCloudSave = false;
             setSyncStatus('synced');
             if (state.activeProfileId) render();
@@ -191,7 +193,8 @@ function shuffled(arr) {
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function save() {
-    const data = { version: 2, profiles: state.profiles };
+    // Snapshot indépendant pour que cloudSave soit isolé des modifications ultérieures
+    const data = JSON.parse(JSON.stringify({ version: 2, profiles: state.profiles }));
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
     pendingCloudSave = true;
     clearTimeout(syncTimer);
@@ -744,8 +747,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }, 400);
         }
-        // Ne pas écraser les changements locaux en attente de sync
-        if (pendingCloudSave) return;
+        // Ne pas écraser les changements locaux en attente de sync,
+        // ni dans les 5s après un save (GitHub CDN peut retourner une version périmée)
+        if (pendingCloudSave || Date.now() - lastCloudSaveTime < 5000) return;
         const fresh = await cloudLoad();
         if (!fresh?.profiles) return;
         state.profiles = fresh.profiles;
