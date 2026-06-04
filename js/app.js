@@ -67,7 +67,8 @@ const state = {
     shufflePos:      -1,
 };
 
-let isPlaying = false;
+let ytPlayer    = null;
+let playerReady = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -265,7 +266,10 @@ function playAt(realIdx) {
         state.shufflePos = pos !== -1 ? pos : 0;
     }
     const track = pl.tracks[realIdx];
-    loadVideo(track.videoId);
+    if (playerReady && ytPlayer) {
+        ytPlayer.loadVideoById(track.videoId);
+        document.getElementById('player-placeholder').style.display = 'none';
+    }
     updateMediaSession(track, track.videoId);
     renderNowPlaying(); renderTracks();
 }
@@ -287,10 +291,11 @@ function playPrev() {
 }
 
 function togglePlayPause() {
+    if (!playerReady || !ytPlayer) return;
     if (state.trackIndex < 0) { playAt(0); return; }
-    sendCmd(isPlaying ? 'pauseVideo' : 'playVideo');
-    isPlaying = !isPlaying;
-    setPlayBtn(isPlaying);
+    const ps = ytPlayer.getPlayerState();
+    if (ps === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+    else ytPlayer.playVideo();
 }
 
 function toggleShuffle() {
@@ -462,15 +467,24 @@ function formatDuration(s) {
 async function searchYT(query) {
     const el = document.getElementById('search-results');
     el.innerHTML = '<p class="empty search-loading">Recherche en cours…</p>';
-    for (const api of SEARCH_APIS) {
-        try {
-            const r = await fetch(api.url(query), { signal: AbortSignal.timeout(5000) });
-            if (!r.ok) continue;
-            const results = api.parse(await r.json());
-            if (results?.length) { renderSearchResults(results); return; }
-        } catch (_) {}
+
+    // Tous les serveurs en parallèle — le premier qui répond gagne
+    const attempts = SEARCH_APIS.map(api =>
+        fetch(api.url(query), { signal: AbortSignal.timeout(6000) })
+            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+            .then(d => {
+                const results = api.parse(d);
+                if (!results?.length) throw new Error('empty');
+                return results;
+            })
+    );
+
+    try {
+        const results = await Promise.any(attempts);
+        renderSearchResults(results);
+    } catch (_) {
+        el.innerHTML = '<p class="empty">Recherche indisponible.<br>Colle directement un lien YouTube ci-dessous.</p>';
     }
-    el.innerHTML = '<p class="empty">Recherche indisponible pour le moment.<br>Colle directement un lien YouTube ci-dessous.</p>';
 }
 
 function renderSearchResults(results) {
@@ -534,35 +548,27 @@ function updateMediaSession(track, videoId) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
-// ── Player yout-ube.com (sans publicités) ────────────────────────────────────
-function loadVideo(videoId) {
-    const iframe = document.getElementById('yt-iframe');
-    const origin = encodeURIComponent(location.origin || 'https://kevbousquet.github.io');
-    iframe.src   = `https://www.yout-ube.com/embed/${videoId}?enablejsapi=1&autoplay=1&rel=0&origin=${origin}`;
-    iframe.style.display = 'block';
-    document.getElementById('player-placeholder').style.display = 'none';
-    isPlaying = true;
-    setPlayBtn(true);
-}
-
-function sendCmd(func) {
-    const iframe = document.getElementById('yt-iframe');
-    iframe?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*');
-}
-
-// Écoute les événements du player (fin de vidéo, play/pause)
-window.addEventListener('message', e => {
-    try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (!data?.event) return;
-        if (data.event === 'onStateChange') {
-            if (data.info === 0) playNext(); // vidéo terminée → suivante
-            isPlaying = data.info === 1;
-            setPlayBtn(isPlaying);
-        }
-        if (data.event === 'onError') setTimeout(playNext, 1500);
-    } catch (_) {}
-});
+// ── Player youtube-nocookie.com (embeds sans pub, API officielle) ────────────
+window.onYouTubeIframeAPIReady = function () {
+    ytPlayer = new YT.Player('yt-player', {
+        height: '200',
+        width: '100%',
+        host: 'https://www.youtube-nocookie.com',
+        playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1 },
+        events: {
+            onReady()        { playerReady = true; },
+            onStateChange(e) {
+                if (e.data === YT.PlayerState.ENDED) playNext();
+                setPlayBtn(e.data === YT.PlayerState.PLAYING);
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState =
+                        e.data === YT.PlayerState.PLAYING ? 'playing' : 'paused';
+                }
+            },
+            onError()        { setTimeout(playNext, 1500); },
+        },
+    });
+};
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
