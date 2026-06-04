@@ -774,12 +774,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('btn-save-token').addEventListener('click', () => {
         const key = document.getElementById('sync-token-input').value.trim();
-        if (!key) return;
+        if (!key) {
+            // Champ vide = réinitialiser vers le token injecté par CI
+            localStorage.removeItem(TOKEN_KEY);
+            ghToken = DEFAULT_TOKEN !== '__SYNC_TOKEN__' ? DEFAULT_TOKEN : null;
+            if (ghToken) localStorage.setItem(TOKEN_KEY, ghToken);
+            setSyncStatus(ghToken ? 'syncing' : 'offline');
+            if (ghToken) cloudSave({ version: 2, profiles: state.profiles });
+            document.getElementById('sync-share-section').style.display = 'none';
+            showToast(ghToken ? '✓ Token réinitialisé !' : 'Token effacé.');
+            return;
+        }
         ghToken = key;
         localStorage.setItem(TOKEN_KEY, ghToken);
         setSyncStatus('syncing');
         cloudSave({ version: 2, profiles: state.profiles });
-        // Afficher le lien de partage
         const urlInput = document.getElementById('sync-setup-url');
         urlInput.value = `${location.origin}${location.pathname}#sync=${encodeURIComponent(ghToken)}`;
         document.getElementById('sync-share-section').style.display = 'block';
