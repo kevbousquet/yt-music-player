@@ -163,6 +163,7 @@ let playerReady = false;
 // ── Background audio keepalive ─────────────────────────────────────────────
 let silentAudioCtx = null;
 let silentAudioSrc = null;
+let silentAudioEl  = null;
 let wasPlayingOnHide = false;
 let isInBackground = false;
 let bgKeepAliveInterval = null;
@@ -171,23 +172,28 @@ function startSilentAudio() {
     if (silentAudioCtx) return;
     try {
         silentAudioCtx = new AudioContext();
-        // Oscillateur à 10 Hz (infra-son, inaudible ≤ 20 Hz) — Chrome ne peut pas
-        // l'optimiser comme un buffer silence, ce qui maintient la session audio active
         const osc  = silentAudioCtx.createOscillator();
         const gain = silentAudioCtx.createGain();
-        osc.frequency.value = 10;
+        const dest = silentAudioCtx.createMediaStreamDestination();
+        osc.frequency.value = 10;   // 10 Hz : infra-son inaudible
         gain.gain.value     = 0.001;
         osc.connect(gain);
-        gain.connect(silentAudioCtx.destination);
+        gain.connect(dest);
         osc.start();
         silentAudioSrc = osc;
+        // Lire le stream via un élément <audio> : Chrome traite les éléments
+        // <audio> comme des sessions média réelles et ne les suspend pas en arrière-plan
+        silentAudioEl = new Audio();
+        silentAudioEl.srcObject = dest.stream;
+        silentAudioEl.play().catch(() => {});
     } catch (_) {}
 }
 
 function stopSilentAudio() {
-    try { silentAudioSrc?.stop(); silentAudioCtx?.close(); } catch (_) {}
+    try { silentAudioSrc?.stop(); silentAudioCtx?.close(); silentAudioEl?.pause(); } catch (_) {}
     silentAudioSrc = null;
     silentAudioCtx = null;
+    silentAudioEl  = null;
 }
 
 function stopBgKeepAlive() {
