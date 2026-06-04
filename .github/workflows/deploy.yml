@@ -26,13 +26,7 @@ jobs:
       - name: Inject sync token
         env:
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
-        run: |
-          python3 -c "
-import os
-t = os.environ.get('SYNC_TOKEN', '')
-with open('js/app.js') as f: c = f.read()
-with open('js/app.js', 'w') as f: f.write(c.replace('__SYNC_TOKEN__', t))
-"
+        run: sed -i "s|__SYNC_TOKEN__|${SYNC_TOKEN}|g" js/app.js
 
       - uses: actions/configure-pages@v4
 
