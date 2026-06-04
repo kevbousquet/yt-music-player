@@ -387,14 +387,47 @@ function renderProfileScreen() {
     });
 }
 
-// ── YouTube Search (via Invidious) ────────────────────────────────────────────
-const INVIDIOUS = [
-    'https://inv.nadeko.net',
-    'https://invidious.privacyredirect.com',
-    'https://invidious.tiekoetter.com',
-];
-
+// ── YouTube Search (Piped + Invidious fallback) ───────────────────────────────
 let searchDebounce = null;
+
+// Chaque entrée : { url(query), parse(data) → [{videoId,title,author,lengthSeconds}] }
+const SEARCH_APIS = [
+    {
+        url: q => `https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(q)}&filter=videos`,
+        parse: d => (d.items || []).filter(i => i.type === 'stream' && i.url).map(i => ({
+            videoId: new URLSearchParams((i.url || '').split('?')[1]).get('v'),
+            title: i.title || '',
+            author: i.uploaderName || '',
+            lengthSeconds: i.duration || 0,
+        })).filter(i => i.videoId),
+    },
+    {
+        url: q => `https://api.piped.projectsegfau.lt/search?q=${encodeURIComponent(q)}&filter=videos`,
+        parse: d => (d.items || []).filter(i => i.type === 'stream' && i.url).map(i => ({
+            videoId: new URLSearchParams((i.url || '').split('?')[1]).get('v'),
+            title: i.title || '',
+            author: i.uploaderName || '',
+            lengthSeconds: i.duration || 0,
+        })).filter(i => i.videoId),
+    },
+    {
+        url: q => `https://pipedapi.adminforge.de/search?q=${encodeURIComponent(q)}&filter=videos`,
+        parse: d => (d.items || []).filter(i => i.type === 'stream' && i.url).map(i => ({
+            videoId: new URLSearchParams((i.url || '').split('?')[1]).get('v'),
+            title: i.title || '',
+            author: i.uploaderName || '',
+            lengthSeconds: i.duration || 0,
+        })).filter(i => i.videoId),
+    },
+    {
+        url: q => `https://inv.nadeko.net/api/v1/search?q=${encodeURIComponent(q)}&type=video&fields=videoId,title,author,lengthSeconds`,
+        parse: d => d,
+    },
+    {
+        url: q => `https://invidious.privacyredirect.com/api/v1/search?q=${encodeURIComponent(q)}&type=video&fields=videoId,title,author,lengthSeconds`,
+        parse: d => d,
+    },
+];
 
 function formatDuration(s) {
     if (!s) return '–';
@@ -408,17 +441,15 @@ function formatDuration(s) {
 async function searchYT(query) {
     const el = document.getElementById('search-results');
     el.innerHTML = '<p class="empty search-loading">Recherche en cours…</p>';
-    for (const host of INVIDIOUS) {
+    for (const api of SEARCH_APIS) {
         try {
-            const url = `${host}/api/v1/search?q=${encodeURIComponent(query)}&type=video&fields=videoId,title,author,lengthSeconds`;
-            const r   = await fetch(url, { signal: AbortSignal.timeout(6000) });
+            const r = await fetch(api.url(query), { signal: AbortSignal.timeout(5000) });
             if (!r.ok) continue;
-            const data = await r.json();
-            renderSearchResults(data);
-            return;
+            const results = api.parse(await r.json());
+            if (results?.length) { renderSearchResults(results); return; }
         } catch (_) {}
     }
-    el.innerHTML = '<p class="empty">Impossible de contacter YouTube.<br>Vérifiez votre connexion.</p>';
+    el.innerHTML = '<p class="empty">Recherche indisponible pour le moment.<br>Colle directement un lien YouTube ci-dessous.</p>';
 }
 
 function renderSearchResults(results) {
