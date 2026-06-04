@@ -171,15 +171,16 @@ function startSilentAudio() {
     if (silentAudioCtx) return;
     try {
         silentAudioCtx = new AudioContext();
-        const buffer = silentAudioCtx.createBuffer(1, silentAudioCtx.sampleRate, silentAudioCtx.sampleRate);
-        // Bruit sub-audible (−80 dB) pour éviter que le navigateur optimise un buffer 100 % silence
-        const data = buffer.getChannelData(0);
-        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.0001;
-        silentAudioSrc = silentAudioCtx.createBufferSource();
-        silentAudioSrc.buffer = buffer;
-        silentAudioSrc.loop = true;
-        silentAudioSrc.connect(silentAudioCtx.destination);
-        silentAudioSrc.start();
+        // Oscillateur à 10 Hz (infra-son, inaudible ≤ 20 Hz) — Chrome ne peut pas
+        // l'optimiser comme un buffer silence, ce qui maintient la session audio active
+        const osc  = silentAudioCtx.createOscillator();
+        const gain = silentAudioCtx.createGain();
+        osc.frequency.value = 10;
+        gain.gain.value     = 0.001;
+        osc.connect(gain);
+        gain.connect(silentAudioCtx.destination);
+        osc.start();
+        silentAudioSrc = osc;
     } catch (_) {}
 }
 
@@ -698,7 +699,13 @@ window.onYouTubeIframeAPIReady = function () {
         host: 'https://www.youtube-nocookie.com',
         playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1, playsinline: 1 },
         events: {
-            onReady()        { playerReady = true; },
+            onReady()        {
+                playerReady = true;
+                // Accorder autoplay à l'iframe pour que Chrome autorise
+                // la reprise audio en arrière-plan
+                const iframe = ytPlayer.getIframe?.();
+                if (iframe) iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+            },
             onStateChange(e) {
                 if (e.data === YT.PlayerState.ENDED) { stopBgKeepAlive(); playNext(); }
                 const playing = e.data === YT.PlayerState.PLAYING;
