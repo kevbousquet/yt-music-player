@@ -6,6 +6,7 @@ const CACHE_KEY        = 'ytplayer_cache_v2';
 const PROFILE_KEY      = 'ytplayer_profile';
 const TOKEN_KEY        = 'ytplayer_gh_token';
 const YT_API_KEY_STORE = 'ytplayer_yt_api_key';
+const DEFAULT_TOKEN    = '__SYNC_TOKEN__';
 const DEFAULT_YT_KEY   = atob('QUl6YVN5QkJieHdZc2EzbGJlaEhNcUJYdUZ4Xzczazg1TFBmWHhr');
 const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
@@ -656,14 +657,18 @@ window.onYouTubeIframeAPIReady = function () {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // Token : URL #sync=TOKEN ou localStorage
+    // Token : URL #sync=TOKEN > localStorage > défaut injecté par CI
     if (location.hash.startsWith('#sync=')) {
         ghToken = decodeURIComponent(location.hash.slice(6));
         localStorage.setItem(TOKEN_KEY, ghToken);
         history.replaceState(null, '', location.pathname);
         showToast('✓ Synchronisation configurée !');
     } else {
-        ghToken = localStorage.getItem(TOKEN_KEY) || null;
+        ghToken = localStorage.getItem(TOKEN_KEY);
+        if (!ghToken && DEFAULT_TOKEN !== '__SYNC_TOKEN__') {
+            ghToken = DEFAULT_TOKEN;
+            localStorage.setItem(TOKEN_KEY, ghToken);
+        }
     }
 
     ytApiKey = localStorage.getItem(YT_API_KEY_STORE) || DEFAULT_YT_KEY;
