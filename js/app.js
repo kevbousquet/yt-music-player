@@ -193,8 +193,7 @@ function shuffled(arr) {
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function save() {
-    // Snapshot indépendant pour que cloudSave soit isolé des modifications ultérieures
-    const data = JSON.parse(JSON.stringify({ version: 2, profiles: state.profiles }));
+    const data = JSON.parse(JSON.stringify({ version: 2, lastModified: Date.now(), profiles: state.profiles }));
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
     pendingCloudSave = true;
     clearTimeout(syncTimer);
@@ -704,9 +703,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const hasLocal = local?.profiles && Object.keys(local.profiles).length > 0;
 
     if (!hasCloud && hasLocal) {
-        // Cloud vide mais données locales présentes : migration locale → cloud
+        // Cloud vide : utiliser local et pousser au cloud
         data = local;
-        if (ghToken) cloudSave(data); // push au cloud
+        if (ghToken) cloudSave(data);
+    } else if (hasCloud && hasLocal) {
+        // Les deux existent : garder la version la plus récente (lastModified)
+        if ((local.lastModified || 0) > (data.lastModified || 0)) {
+            // Local plus récent (ex: sauvegarde interrompue par rechargement) → pousser au cloud
+            data = local;
+            if (ghToken) cloudSave(data);
+        } else {
+            localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        }
     } else if (data) {
         localStorage.setItem(CACHE_KEY, JSON.stringify(data));
     } else {
@@ -747,17 +755,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }, 400);
         }
-        // Ne pas écraser les changements locaux en attente de sync,
-        // ni dans les 5s après un save (GitHub CDN peut retourner une version périmée)
-        if (pendingCloudSave || Date.now() - lastCloudSaveTime < 5000) return;
-        const fresh = await cloudLoad();
-        if (!fresh?.profiles) return;
-        state.profiles = fresh.profiles;
-        localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
-        if (state.activeProfileId && !state.profiles[state.activeProfileId]) {
-            state.activeProfileId = null; showProfileScreen();
-        } else if (state.activeProfileId) { render(); }
-        setSyncStatus('synced');
+        // Rafraîchir le SHA pour éviter les conflits 409, mais NE PAS écraser l'état local
+        // (le rechargement complet de la page au boot est la seule sync multi-appareils)
+        if (!pendingCloudSave) cloudLoad().then(f => { if (f) setSyncStatus('synced'); });
     });
 
     // ── Buttons ──
