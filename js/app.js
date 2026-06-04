@@ -705,8 +705,14 @@ window.onYouTubeIframeAPIReady = function () {
                 setPlayBtn(playing);
                 if (playing) startSilentAudio();
                 else if (!isInBackground) { stopSilentAudio(); stopBgKeepAlive(); }
+                // YouTube s'est mis en pause tout seul en arrière-plan → relancer immédiatement
+                if (e.data === YT.PlayerState.PAUSED && isInBackground && wasPlayingOnHide) {
+                    try { ytPlayer.playVideo(); } catch (_) {}
+                }
                 if ('mediaSession' in navigator) {
-                    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+                    // Dire au système qu'on veut jouer, même si YouTube est en pause
+                    navigator.mediaSession.playbackState =
+                        (playing || (isInBackground && wasPlayingOnHide)) ? 'playing' : 'paused';
                 }
             },
             onError()        { setTimeout(playNext, 1500); },
@@ -791,6 +797,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (wasPlayingOnHide && !bgKeepAliveInterval) {
                 bgKeepAliveInterval = setInterval(() => {
                     if (!isInBackground || !ytPlayer) { stopBgKeepAlive(); return; }
+                    // Réveiller l'AudioContext si Chrome l'a suspendu
+                    if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
                     if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
                         try { ytPlayer.playVideo(); } catch (_) {}
                     }
@@ -826,6 +834,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (state.activeProfileId) { render(); }
         setSyncStatus('synced');
     });
+
+    // Démarrer l'AudioContext dès le premier geste, avant même la lecture,
+    // pour que la session audio soit établie avant de passer en arrière-plan
+    const startAudioOnFirstGesture = () => {
+        startSilentAudio();
+        document.removeEventListener('click',      startAudioOnFirstGesture, true);
+        document.removeEventListener('touchstart', startAudioOnFirstGesture, true);
+    };
+    document.addEventListener('click',      startAudioOnFirstGesture, { capture: true, passive: true });
+    document.addEventListener('touchstart', startAudioOnFirstGesture, { capture: true, passive: true });
 
     // ── Buttons ──
     document.getElementById('btn-add-profile').addEventListener('click', () => {
