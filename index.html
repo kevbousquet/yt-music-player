@@ -33,18 +33,42 @@
 
     <!-- ── Modal sync setup ── -->
     <div class="search-modal" id="sync-setup-modal">
-        <div class="search-modal-box" style="max-height:280px">
+        <div class="search-modal-box" style="max-height:480px">
             <div class="search-modal-header">
-                <span class="search-modal-title">&#128241; Configurer un autre appareil</span>
+                <span class="search-modal-title">&#9881; Synchronisation</span>
                 <button class="btn-icon" id="btn-close-sync-modal">&#xD7;</button>
             </div>
-            <p style="padding:0 16px;font-size:13px;color:var(--dim);line-height:1.6">
-                Envoie ce lien à ton téléphone (SMS, WhatsApp…).<br>
-                Ouvre-le dans le navigateur : la sync sera configurée automatiquement.
-            </p>
-            <div style="display:flex;gap:8px;padding:12px 16px">
-                <input id="sync-setup-url" class="inp" readonly style="font-size:11px">
-                <button class="btn-primary" id="btn-copy-sync-url" style="width:auto;padding:0 14px;white-space:nowrap">Copier</button>
+
+            <!-- Token GitHub -->
+            <div style="padding:12px 16px 8px">
+                <p style="font-size:13px;font-weight:600;margin-bottom:6px">Token GitHub</p>
+                <p style="font-size:12px;color:var(--dim);margin-bottom:8px;line-height:1.5">
+                    Permet de sauvegarder vos playlists et de synchroniser tous vos appareils.
+                </p>
+                <div style="display:flex;gap:8px">
+                    <input id="sync-token-input" class="inp" type="password" placeholder="ghp_…" style="font-size:12px" autocomplete="off">
+                    <button class="btn-primary" id="btn-save-token" style="width:auto;padding:0 14px;white-space:nowrap">Enregistrer</button>
+                </div>
+                <p style="font-size:11px;color:var(--dim);margin-top:8px">
+                    Pas de token ?
+                    <a id="link-create-token" href="https://github.com/settings/tokens/new?scopes=public_repo&description=YT+Music+Player" target="_blank" style="color:var(--accent)">Créer un token gratuit sur GitHub ↗</a>
+                    <br>Cochez uniquement <strong>public_repo</strong> puis cliquez "Generate token".
+                </p>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+
+            <!-- Lien de sync à partager / mettre en favori -->
+            <div id="sync-share-section" style="padding:8px 16px 14px;display:none">
+                <p style="font-size:13px;font-weight:600;margin-bottom:6px">Lien de synchronisation</p>
+                <p style="font-size:12px;color:var(--dim);margin-bottom:8px;line-height:1.5">
+                    Mets ce lien en <strong>favori</strong> sur chaque appareil.<br>
+                    L'ouvrir reconfigure la sync automatiquement si elle se coupe.
+                </p>
+                <div style="display:flex;gap:8px">
+                    <input id="sync-setup-url" class="inp" readonly style="font-size:11px">
+                    <button class="btn-primary" id="btn-copy-sync-url" style="width:auto;padding:0 14px;white-space:nowrap">Copier</button>
+                </div>
             </div>
         </div>
     </div>

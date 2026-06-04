@@ -736,14 +736,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
 
-    // Bouton ⚙ : plus nécessaire, token embarqué
-    document.getElementById('btn-sync-setup').addEventListener('click', () => {
-        showToast('✓ Sync active sur tous les appareils automatiquement');
+    // Bouton ⚙ : ouvre la modale de sync
+    function openSyncModal() {
+        const tokenInput   = document.getElementById('sync-token-input');
+        const shareSection = document.getElementById('sync-share-section');
+        const urlInput     = document.getElementById('sync-setup-url');
+        tokenInput.value   = ghToken || '';
+        if (ghToken) {
+            urlInput.value = `${location.origin}${location.pathname}#sync=${encodeURIComponent(ghToken)}`;
+            shareSection.style.display = 'block';
+        } else {
+            shareSection.style.display = 'none';
+        }
+        document.getElementById('sync-setup-modal').style.display = 'flex';
+    }
+    document.getElementById('btn-sync-setup').addEventListener('click', openSyncModal);
+
+    document.getElementById('btn-save-token').addEventListener('click', () => {
+        const key = document.getElementById('sync-token-input').value.trim();
+        if (!key) return;
+        ghToken = key;
+        localStorage.setItem(TOKEN_KEY, ghToken);
+        setSyncStatus('syncing');
+        cloudSave({ version: 2, profiles: state.profiles });
+        // Afficher le lien de partage
+        const urlInput = document.getElementById('sync-setup-url');
+        urlInput.value = `${location.origin}${location.pathname}#sync=${encodeURIComponent(ghToken)}`;
+        document.getElementById('sync-share-section').style.display = 'block';
+        showToast('✓ Token enregistré — sync activée !');
     });
+
     document.getElementById('btn-copy-sync-url').addEventListener('click', () => {
         const input = document.getElementById('sync-setup-url');
         input.select(); navigator.clipboard?.writeText(input.value);
-        showToast('✓ Lien copié !');
+        showToast('✓ Lien copié ! Mets-le en favori sur chaque appareil.');
     });
     document.getElementById('btn-close-sync-modal').addEventListener('click', () => {
         document.getElementById('sync-setup-modal').style.display = 'none';
