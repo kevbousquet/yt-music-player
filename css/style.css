@@ -28,6 +28,50 @@ body {
     height: 100vh;
 }
 
+/* ── Bannière installation PWA ── */
+.install-banner {
+    display: none;
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 50px;
+    padding: 10px 16px;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+    box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    white-space: nowrap;
+}
+
+.btn-install {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: background .15s;
+}
+.btn-install:hover { background: #6a58e0; }
+
+.btn-install-close {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0 2px;
+}
+.btn-install-close:hover { color: var(--text); }
+
 /* ── Profile screen ── */
 .profile-screen {
     position: fixed; inset: 0; z-index: 100;

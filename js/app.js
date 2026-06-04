@@ -8,6 +8,25 @@ const COLORS      = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316'
 
 let syncTimer = null;
 
+// ── PWA : Service Worker + installation ──────────────────────────────────────
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/yt-music-player/sw.js').catch(() => {});
+}
+
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    const banner = document.getElementById('install-banner');
+    if (banner) banner.style.display = 'flex';
+});
+
+window.addEventListener('appinstalled', () => {
+    const banner = document.getElementById('install-banner');
+    if (banner) banner.style.display = 'none';
+});
+
 // ── Cloud sync ────────────────────────────────────────────────────────────────
 function setSyncStatus(s) {
     const el = document.getElementById('sync-status');
@@ -245,7 +264,9 @@ function playAt(realIdx) {
         const pos = state.shuffleOrder.indexOf(realIdx);
         state.shufflePos = pos !== -1 ? pos : 0;
     }
-    loadVideo(pl.tracks[realIdx].videoId);
+    const track = pl.tracks[realIdx];
+    loadVideo(track.videoId);
+    updateMediaSession(track, track.videoId);
     renderNowPlaying(); renderTracks();
 }
 
@@ -489,6 +510,30 @@ function hideSearchModal() {
     document.getElementById('search-results').innerHTML = '<p class="empty">Tapez pour rechercher…</p>';
 }
 
+// ── Media Session API (contrôles écran verrouillé) ───────────────────────────
+function setupMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.setActionHandler('play',          () => { sendCmd('playVideo');  isPlaying = true;  setPlayBtn(true);  });
+    navigator.mediaSession.setActionHandler('pause',         () => { sendCmd('pauseVideo'); isPlaying = false; setPlayBtn(false); });
+    navigator.mediaSession.setActionHandler('nexttrack',     playNext);
+    navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+}
+
+function updateMediaSession(track, videoId) {
+    if (!('mediaSession' in navigator)) return;
+    const pl = activePL();
+    navigator.mediaSession.metadata = new MediaMetadata({
+        title:  track.title,
+        artist: activeProfile()?.name || 'YT Player',
+        album:  pl?.name || '',
+        artwork: [
+            { src: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' },
+            { src: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`, sizes: '320x180', type: 'image/jpeg' },
+        ],
+    });
+    navigator.mediaSession.playbackState = 'playing';
+}
+
 // ── Player yout-ube.com (sans publicités) ────────────────────────────────────
 function loadVideo(videoId) {
     const iframe = document.getElementById('yt-iframe');
@@ -569,6 +614,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
+
+    // ── Media session (contrôles verrouillage) ──
+    setupMediaSession();
+
+    // ── Installation PWA ──
+    document.getElementById('btn-install')?.addEventListener('click', async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        document.getElementById('install-banner').style.display = 'none';
+    });
+    document.getElementById('btn-install-close')?.addEventListener('click', () => {
+        document.getElementById('install-banner').style.display = 'none';
+    });
 
     // ── Search ──
     document.getElementById('btn-search-open').addEventListener('click', showSearchModal);

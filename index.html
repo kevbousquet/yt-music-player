@@ -4,9 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YT Music Player</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon.svg">
+    <meta name="theme-color" content="#7c6af7">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="YT Player">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+    <!-- ── Bannière installation PWA ── -->
+    <div class="install-banner" id="install-banner">
+        <span>&#128241; Installe l'app pour écouter en arrière-plan</span>
+        <button class="btn-install" id="btn-install">Installer</button>
+        <button class="btn-install-close" id="btn-install-close">&#xD7;</button>
+    </div>
 
     <!-- ── Écran de sélection de profil ── -->
     <div class="profile-screen" id="profile-screen">

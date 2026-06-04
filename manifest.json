@@ -1,0 +1,19 @@
+{
+  "name": "YT Music Player",
+  "short_name": "YT Player",
+  "description": "Écoute YouTube sans pub, partout",
+  "start_url": "/yt-music-player/",
+  "scope": "/yt-music-player/",
+  "display": "standalone",
+  "background_color": "#0d0d12",
+  "theme_color": "#7c6af7",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
