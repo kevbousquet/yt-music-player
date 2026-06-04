@@ -10,10 +10,11 @@ const DEFAULT_TOKEN    = '__SYNC_TOKEN__';
 const DEFAULT_YT_KEY   = atob('QUl6YVN5QkJieHdZc2EzbGJlaEhNcUJYdUZ4Xzczazg1TFBmWHhr');
 const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
-let syncTimer = null;
-let ghToken   = null;
-let dbSha     = null;
-let ytApiKey  = null;
+let syncTimer        = null;
+let pendingCloudSave = false;
+let ghToken          = null;
+let dbSha            = null;
+let ytApiKey         = null;
 
 // ── PWA : Service Worker + installation ──────────────────────────────────────
 if ('serviceWorker' in navigator) {
@@ -77,7 +78,8 @@ async function cloudLoad(isRetry = false) {
 }
 
 async function cloudSave(data) {
-    if (!ghToken) { setSyncStatus('offline'); return; }
+    syncTimer = null;
+    if (!ghToken) { pendingCloudSave = false; setSyncStatus('offline'); return; }
     setSyncStatus('syncing');
     if (!dbSha) await cloudLoad();
     try {
@@ -96,7 +98,9 @@ async function cloudSave(data) {
         });
         if (r.ok) {
             dbSha = (await r.json()).content.sha;
+            pendingCloudSave = false;
             setSyncStatus('synced');
+            if (state.activeProfileId) render();
         } else if (r.status === 409) {
             // Conflit SHA : recharger puis réessayer
             await cloudLoad();
@@ -108,9 +112,10 @@ async function cloudSave(data) {
             localStorage.setItem(TOKEN_KEY, ghToken);
             await cloudSave(data);
         } else {
+            pendingCloudSave = false;
             setSyncStatus('error');
         }
-    } catch (_) { setSyncStatus('offline'); }
+    } catch (_) { pendingCloudSave = false; setSyncStatus('offline'); }
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -188,6 +193,7 @@ function shuffled(arr) {
 function save() {
     const data = { version: 2, profiles: state.profiles };
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    pendingCloudSave = true;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => cloudSave(data), 800);
 }
@@ -738,6 +744,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }, 400);
         }
+        // Ne pas écraser les changements locaux en attente de sync
+        if (pendingCloudSave) return;
         const fresh = await cloudLoad();
         if (!fresh?.profiles) return;
         state.profiles = fresh.profiles;
