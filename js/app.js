@@ -6,7 +6,6 @@ const CACHE_KEY        = 'ytplayer_cache_v2';
 const PROFILE_KEY      = 'ytplayer_profile';
 const TOKEN_KEY        = 'ytplayer_gh_token';
 const YT_API_KEY_STORE = 'ytplayer_yt_api_key';
-const DEFAULT_TOKEN    = atob('Z2hwX05SbHdYTkNHalNmSEdMbllMcUlnQXpjQ3llQ2ViTTBTWVRCMA==');
 const DEFAULT_YT_KEY   = atob('QUl6YVN5QkJieHdZc2EzbGJlaEhNcUJYdUZ4Xzczazg1TFBmWHhr');
 const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
@@ -657,17 +656,14 @@ window.onYouTubeIframeAPIReady = function () {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // Token : URL #sync=TOKEN > localStorage > token par défaut intégré
+    // Token : URL #sync=TOKEN ou localStorage
     if (location.hash.startsWith('#sync=')) {
         ghToken = decodeURIComponent(location.hash.slice(6));
         localStorage.setItem(TOKEN_KEY, ghToken);
         history.replaceState(null, '', location.pathname);
         showToast('✓ Synchronisation configurée !');
     } else {
-        ghToken = localStorage.getItem(TOKEN_KEY) || DEFAULT_TOKEN;
-        if (!localStorage.getItem(TOKEN_KEY)) {
-            localStorage.setItem(TOKEN_KEY, ghToken);
-        }
+        ghToken = localStorage.getItem(TOKEN_KEY) || null;
     }
 
     ytApiKey = localStorage.getItem(YT_API_KEY_STORE) || DEFAULT_YT_KEY;
