@@ -1,4 +1,4 @@
-const CACHE = 'ytplayer-v1';
+const CACHE = 'ytplayer-v3';  // Incrémenté pour forcer la mise à jour
 const ASSETS = [
     '/yt-music-player/',
     '/yt-music-player/index.html',
@@ -10,18 +10,29 @@ const ASSETS = [
 
 self.addEventListener('install', e => {
     e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-    self.skipWaiting();
+    self.skipWaiting(); // Prend le contrôle immédiatement
 });
 
 self.addEventListener('activate', e => {
-    e.waitUntil(caches.keys().then(keys =>
-        Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ));
-    self.clients.claim();
+    e.waitUntil(
+        caches.keys().then(keys =>
+            Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+        )
+    );
+    self.clients.claim(); // Force tous les onglets à utiliser le nouveau SW
 });
 
+// Réseau en priorité pour l'app, cache en fallback
 self.addEventListener('fetch', e => {
-    e.respondWith(
-        caches.match(e.request).then(cached => cached || fetch(e.request))
-    );
+    if (e.request.url.includes('/yt-music-player/')) {
+        e.respondWith(
+            fetch(e.request)
+                .then(r => {
+                    const clone = r.clone();
+                    caches.open(CACHE).then(c => c.put(e.request, clone));
+                    return r;
+                })
+                .catch(() => caches.match(e.request))
+        );
+    }
 });

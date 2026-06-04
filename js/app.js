@@ -8,8 +8,8 @@ const TOKEN_KEY   = 'ytplayer_gh_token';
 const COLORS      = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
 let syncTimer = null;
-let ghToken   = null;   // GitHub Personal Access Token
-let dbSha     = null;   // SHA du fichier db.json (requis pour les mises à jour)
+let ghToken   = null;
+let dbSha     = null;
 
 // ── PWA : Service Worker + installation ──────────────────────────────────────
 if ('serviceWorker' in navigator) {
@@ -620,15 +620,14 @@ window.onYouTubeIframeAPIReady = function () {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // 0. TOKEN EN PREMIER — avant tout appel réseau
-    let isNewToken = false;
+    // Token : URL #sync=TOKEN ou localStorage
     if (location.hash.startsWith('#sync=')) {
-        ghToken    = decodeURIComponent(location.hash.slice(6));
-        isNewToken = true;
-        localStorage.setItem(TOKEN_KEY, ghToken);
+        ghToken = decodeURIComponent(location.hash.slice(6));
+        localStorage.setItem('ytplayer_gh_token', ghToken);
         history.replaceState(null, '', location.pathname);
+        showToast('✓ Synchronisation configurée !');
     } else {
-        ghToken = localStorage.getItem(TOKEN_KEY);
+        ghToken = localStorage.getItem('ytplayer_gh_token');
     }
 
     setSyncStatus(ghToken ? 'syncing' : 'offline');
@@ -650,8 +649,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     setSyncStatus(ghToken ? (data ? 'synced' : 'error') : 'offline');
-
-    if (isNewToken) showToast('✓ Synchronisation configurée sur cet appareil !');
 
     // 2. Migrate v1 → v2 si nécessaire
     if (data && data.version !== 2) {
@@ -690,15 +687,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
 
-    // Bouton ⚙ : affiche le lien de configuration pour un autre appareil
+    // Bouton ⚙ : plus nécessaire, token embarqué
     document.getElementById('btn-sync-setup').addEventListener('click', () => {
-        if (!ghToken) {
-            alert('Aucun token configuré sur cet appareil.\nOuvre d\'abord le lien de configuration depuis le PC.');
-            return;
-        }
-        const url = `${location.origin}${location.pathname}#sync=${encodeURIComponent(ghToken)}`;
-        document.getElementById('sync-setup-url').value = url;
-        document.getElementById('sync-setup-modal').style.display = 'flex';
+        showToast('✓ Sync active sur tous les appareils automatiquement');
     });
     document.getElementById('btn-copy-sync-url').addEventListener('click', () => {
         const input = document.getElementById('sync-setup-url');
