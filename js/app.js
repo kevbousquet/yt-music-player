@@ -78,11 +78,38 @@ async function cloudLoad(isRetry = false) {
     } catch (_) { return null; }
 }
 
+// Fusionne deux jeux de données : union des pistes par videoId, sans écrasement
+function mergeData(local, cloud) {
+    const merged = JSON.parse(JSON.stringify(local));
+    for (const [pid, cProf] of Object.entries(cloud.profiles || {})) {
+        if (!merged.profiles[pid]) { merged.profiles[pid] = cProf; continue; }
+        for (const [plid, cPl] of Object.entries(cProf.playlists || {})) {
+            if (!merged.profiles[pid].playlists[plid]) {
+                merged.profiles[pid].playlists[plid] = cPl; continue;
+            }
+            const lPl = merged.profiles[pid].playlists[plid];
+            const existing = new Set(lPl.tracks.map(t => t.videoId));
+            for (const t of cPl.tracks) {
+                if (!existing.has(t.videoId)) { lPl.tracks.push(t); existing.add(t.videoId); }
+            }
+        }
+    }
+    merged.lastModified = Date.now();
+    return merged;
+}
+
 async function cloudSave(data) {
     syncTimer = null;
     if (!ghToken) { pendingCloudSave = false; setSyncStatus('offline'); return; }
     setSyncStatus('syncing');
-    if (!dbSha) await cloudLoad();
+    // Charger le cloud pour obtenir le SHA et fusionner avant d'écraser
+    const cloudData = await cloudLoad();
+    if (cloudData?.profiles) {
+        data = mergeData(data, cloudData);
+        state.profiles = data.profiles;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        if (state.activeProfileId) render();
+    }
     try {
         const r = await fetch(GITHUB_API, {
             method: 'PUT',
@@ -759,14 +786,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }, 400);
         }
-        // Sync multi-appareils : mettre à jour seulement si le cloud est strictement plus récent
+        // Sync multi-appareils : fusionner avec le cloud si il a des pistes plus récentes
         if (pendingCloudSave) return;
         const fresh = await cloudLoad();
         if (!fresh?.profiles) return;
         const localTs = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}').lastModified || 0;
-        if ((fresh.lastModified || 0) <= localTs) return; // cloud pas plus récent → garder local
-        state.profiles = fresh.profiles;
-        localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+        if ((fresh.lastModified || 0) <= localTs) { setSyncStatus('synced'); return; }
+        const local = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+        const merged = mergeData(local?.profiles ? local : { version: 2, profiles: state.profiles }, fresh);
+        state.profiles = merged.profiles;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(merged));
         if (state.activeProfileId && !state.profiles[state.activeProfileId]) {
             state.activeProfileId = null; showProfileScreen();
         } else if (state.activeProfileId) { render(); }
