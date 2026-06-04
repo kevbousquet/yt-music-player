@@ -109,6 +109,30 @@ const state = {
 let ytPlayer    = null;
 let playerReady = false;
 
+// ── Background audio keepalive ─────────────────────────────────────────────
+let silentAudioCtx = null;
+let silentAudioSrc = null;
+let wasPlayingOnHide = false;
+
+function startSilentAudio() {
+    if (silentAudioCtx) return;
+    try {
+        silentAudioCtx = new AudioContext();
+        const buffer = silentAudioCtx.createBuffer(1, silentAudioCtx.sampleRate, silentAudioCtx.sampleRate);
+        silentAudioSrc = silentAudioCtx.createBufferSource();
+        silentAudioSrc.buffer = buffer;
+        silentAudioSrc.loop = true;
+        silentAudioSrc.connect(silentAudioCtx.destination);
+        silentAudioSrc.start();
+    } catch (_) {}
+}
+
+function stopSilentAudio() {
+    try { silentAudioSrc?.stop(); silentAudioCtx?.close(); } catch (_) {}
+    silentAudioSrc = null;
+    silentAudioCtx = null;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -574,8 +598,8 @@ function hideSearchModal() {
 // ── Media Session API (contrôles écran verrouillé) ───────────────────────────
 function setupMediaSession() {
     if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.setActionHandler('play',          () => { sendCmd('playVideo');  isPlaying = true;  setPlayBtn(true);  });
-    navigator.mediaSession.setActionHandler('pause',         () => { sendCmd('pauseVideo'); isPlaying = false; setPlayBtn(false); });
+    navigator.mediaSession.setActionHandler('play',          () => { ytPlayer?.playVideo();  setPlayBtn(true);  });
+    navigator.mediaSession.setActionHandler('pause',         () => { ytPlayer?.pauseVideo(); setPlayBtn(false); });
     navigator.mediaSession.setActionHandler('nexttrack',     playNext);
     navigator.mediaSession.setActionHandler('previoustrack', playPrev);
 }
@@ -601,15 +625,16 @@ window.onYouTubeIframeAPIReady = function () {
         height: '200',
         width: '100%',
         host: 'https://www.youtube-nocookie.com',
-        playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1 },
+        playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1, playsinline: 1 },
         events: {
             onReady()        { playerReady = true; },
             onStateChange(e) {
                 if (e.data === YT.PlayerState.ENDED) playNext();
-                setPlayBtn(e.data === YT.PlayerState.PLAYING);
+                const playing = e.data === YT.PlayerState.PLAYING;
+                setPlayBtn(playing);
+                if (playing) startSilentAudio(); else stopSilentAudio();
                 if ('mediaSession' in navigator) {
-                    navigator.mediaSession.playbackState =
-                        e.data === YT.PlayerState.PLAYING ? 'playing' : 'paused';
+                    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
                 }
             },
             onError()        { setTimeout(playNext, 1500); },
@@ -666,9 +691,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         showProfileScreen();
     }
 
-    // 4. Re-sync when coming back to the tab
+    // 4. Re-sync when coming back to the tab + resume si YouTube a mis en pause en arrière-plan
     document.addEventListener('visibilitychange', async () => {
-        if (document.hidden) return;
+        if (document.hidden) {
+            wasPlayingOnHide = playerReady && ytPlayer &&
+                ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
+            return;
+        }
+        // Retour au premier plan : reprendre si YouTube nous a mis en pause
+        if (wasPlayingOnHide && playerReady && ytPlayer) {
+            wasPlayingOnHide = false;
+            setTimeout(() => {
+                if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
+                    ytPlayer.playVideo();
+                }
+            }, 400);
+        }
         const fresh = await cloudLoad();
         if (!fresh?.profiles) return;
         state.profiles = fresh.profiles;
