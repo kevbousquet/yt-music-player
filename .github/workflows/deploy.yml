@@ -26,7 +26,7 @@ jobs:
       - name: Inject sync token
         env:
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
-        run: sed -i "s|__SYNC_TOKEN__|${SYNC_TOKEN}|g" js/app.js
+        run: sed -i "s|const DEFAULT_TOKEN    = '__SYNC_TOKEN__'|const DEFAULT_TOKEN    = '${SYNC_TOKEN}'|g" js/app.js
 
       - uses: actions/configure-pages@v4
 
