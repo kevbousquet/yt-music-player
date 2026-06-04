@@ -101,13 +101,14 @@ async function cloudSave(data) {
             dbSha = (await r.json()).content.sha;
             lastCloudSaveTime = Date.now();
             pendingCloudSave = false;
+            setSyncStatus('synced');
             if (state.activeProfileId) render();
         } else if (r.status === 409) {
             // Conflit SHA : recharger puis réessayer
             await cloudLoad();
             await cloudSave(data);
-        } else if (r.status === 401 && DEFAULT_TOKEN !== '__SYNC_TOKEN__') {
-            // Token révoqué : basculer sur le token injecté par CI
+        } else if (r.status === 401 && DEFAULT_TOKEN !== '__SYNC_TOKEN__' && ghToken !== DEFAULT_TOKEN) {
+            // Token localStorage révoqué : basculer sur le token injecté par CI
             localStorage.removeItem(TOKEN_KEY);
             ghToken = DEFAULT_TOKEN;
             localStorage.setItem(TOKEN_KEY, ghToken);
