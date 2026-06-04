@@ -43,6 +43,9 @@ body {
     padding: 18px 16px 14px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .app-title {
@@ -50,6 +53,25 @@ body {
     font-weight: 700;
     color: var(--accent);
     letter-spacing: 0.3px;
+    flex: 1;
+}
+
+.sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+    transition: background .3s;
+}
+.sync-syncing { background: #f0c040; animation: pulse 1s infinite; }
+.sync-synced  { background: #4ade80; }
+.sync-error   { background: var(--danger); }
+.sync-offline { background: #666; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
 }
 
 /* ── Sections ── */
