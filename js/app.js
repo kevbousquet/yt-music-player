@@ -7,6 +7,7 @@ const PROFILE_KEY      = 'ytplayer_profile';
 const TOKEN_KEY        = 'ytplayer_gh_token';
 const YT_API_KEY_STORE = 'ytplayer_yt_api_key';
 const DEFAULT_TOKEN    = atob('Z2hwX05SbHdYTkNHalNmSEdMbllMcUlnQXpjQ3llQ2ViTTBTWVRCMA==');
+const DEFAULT_YT_KEY   = atob('QUl6YVN5QkJieHdZc2EzbGJlaEhNcUJYdUZ4Xzczazg1TFBmWHhr');
 const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
 let syncTimer = null;
@@ -669,7 +670,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    ytApiKey = localStorage.getItem(YT_API_KEY_STORE);
+    ytApiKey = localStorage.getItem(YT_API_KEY_STORE) || DEFAULT_YT_KEY;
+    if (!localStorage.getItem(YT_API_KEY_STORE)) localStorage.setItem(YT_API_KEY_STORE, ytApiKey);
     setSyncStatus(ghToken ? 'syncing' : 'offline');
 
     // 1. Charger depuis le cloud
