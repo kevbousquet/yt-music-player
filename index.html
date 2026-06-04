@@ -17,6 +17,20 @@
         </div>
     </div>
 
+    <!-- ── Modale de recherche YouTube ── -->
+    <div class="search-modal" id="search-modal">
+        <div class="search-modal-box">
+            <div class="search-modal-header">
+                <span class="search-modal-title">&#128269; Rechercher sur YouTube</span>
+                <button class="btn-icon" id="btn-search-close" title="Fermer">&#xD7;</button>
+            </div>
+            <input type="text" id="search-input" class="inp search-inp" placeholder="Titre, artiste, album…" autocomplete="off">
+            <div class="search-results" id="search-results">
+                <p class="empty">Tapez pour rechercher…</p>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Application principale ── -->
     <div class="app">
 
@@ -47,7 +61,9 @@
             </div>
 
             <div class="add-form">
-                <input type="text" id="url-input" class="inp" placeholder="Coller un lien YouTube…">
+                <button class="btn-search-open" id="btn-search-open">&#128269; Rechercher sur YouTube</button>
+                <div class="add-divider"><span>ou coller un lien</span></div>
+                <input type="text" id="url-input" class="inp" placeholder="https://youtube.com/watch?v=…">
                 <input type="text" id="title-input" class="inp" placeholder="Titre personnalisé (optionnel)">
                 <button class="btn-primary" id="btn-add">Ajouter à la playlist</button>
             </div>

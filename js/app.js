@@ -390,6 +390,77 @@ function renderProfileScreen() {
     });
 }
 
+// ── YouTube Search (via Invidious) ────────────────────────────────────────────
+const INVIDIOUS = [
+    'https://inv.nadeko.net',
+    'https://invidious.privacyredirect.com',
+    'https://invidious.tiekoetter.com',
+];
+
+let searchDebounce = null;
+
+function formatDuration(s) {
+    if (!s) return '–';
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+async function searchYT(query) {
+    const el = document.getElementById('search-results');
+    el.innerHTML = '<p class="empty search-loading">Recherche en cours…</p>';
+    for (const host of INVIDIOUS) {
+        try {
+            const url = `${host}/api/v1/search?q=${encodeURIComponent(query)}&type=video&fields=videoId,title,author,lengthSeconds`;
+            const r   = await fetch(url, { signal: AbortSignal.timeout(6000) });
+            if (!r.ok) continue;
+            const data = await r.json();
+            renderSearchResults(data);
+            return;
+        } catch (_) {}
+    }
+    el.innerHTML = '<p class="empty">Impossible de contacter YouTube.<br>Vérifiez votre connexion.</p>';
+}
+
+function renderSearchResults(results) {
+    const el = document.getElementById('search-results');
+    if (!results?.length) { el.innerHTML = '<p class="empty">Aucun résultat.</p>'; return; }
+    el.innerHTML = results.slice(0, 15).map(v => `
+        <div class="search-result">
+            <img class="result-thumb" src="https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg" loading="lazy" alt="">
+            <div class="result-info">
+                <div class="result-title">${esc(v.title)}</div>
+                <div class="result-meta">${esc(v.author)} · ${formatDuration(v.lengthSeconds)}</div>
+            </div>
+            <button class="btn-add-result" data-vid="${v.videoId}" data-title="${esc(v.title)}" title="Ajouter à la playlist">+</button>
+        </div>`).join('');
+
+    el.querySelectorAll('.btn-add-result').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const pl = activePL(); if (!pl) return;
+            pl.tracks.push({ id: uid(), videoId: btn.dataset.vid, title: btn.dataset.title });
+            if (state.isShuffled) resetShuffle(pl.tracks.length);
+            save(); renderTracks();
+            btn.textContent = '✓';
+            btn.classList.add('added');
+            setTimeout(() => { btn.textContent = '+'; btn.classList.remove('added'); }, 1500);
+        });
+    });
+}
+
+function showSearchModal() {
+    document.getElementById('search-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('search-input').focus(), 50);
+}
+
+function hideSearchModal() {
+    document.getElementById('search-modal').style.display = 'none';
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-results').innerHTML = '<p class="empty">Tapez pour rechercher…</p>';
+}
+
 // ── YouTube IFrame API ────────────────────────────────────────────────────────
 window.onYouTubeIframeAPIReady = function () {
     ytPlayer = new YT.Player('yt-player', {
@@ -456,6 +527,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
+
+    // ── Search ──
+    document.getElementById('btn-search-open').addEventListener('click', showSearchModal);
+    document.getElementById('btn-search-close').addEventListener('click', hideSearchModal);
+
+    document.getElementById('search-modal').addEventListener('click', e => {
+        if (e.target === e.currentTarget) hideSearchModal();
+    });
+
+    document.getElementById('search-input').addEventListener('input', e => {
+        clearTimeout(searchDebounce);
+        const q = e.target.value.trim();
+        if (q.length < 2) {
+            document.getElementById('search-results').innerHTML = '<p class="empty">Tapez pour rechercher…</p>';
+            return;
+        }
+        searchDebounce = setTimeout(() => searchYT(q), 500);
+    });
+
+    document.getElementById('search-input').addEventListener('keydown', e => {
+        if (e.key === 'Escape') hideSearchModal();
+    });
 
     document.getElementById('btn-new-playlist').addEventListener('click', () => {
         const name = prompt('Nom de la nouvelle playlist :');
