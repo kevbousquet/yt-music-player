@@ -101,7 +101,6 @@ async function cloudSave(data) {
             dbSha = (await r.json()).content.sha;
             lastCloudSaveTime = Date.now();
             pendingCloudSave = false;
-            setSyncStatus('synced');
             if (state.activeProfileId) render();
         } else if (r.status === 409) {
             // Conflit SHA : recharger puis réessayer
@@ -196,8 +195,9 @@ function save() {
     const data = JSON.parse(JSON.stringify({ version: 2, lastModified: Date.now(), profiles: state.profiles }));
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
     pendingCloudSave = true;
+    setSyncStatus('synced'); // optimiste : local est déjà à jour
     clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => cloudSave(data), 800);
+    syncTimer = setTimeout(() => cloudSave(data), 300);
 }
 
 // ── Migration v1 → v2 ─────────────────────────────────────────────────────────
