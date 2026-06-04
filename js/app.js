@@ -165,12 +165,16 @@ let silentAudioCtx = null;
 let silentAudioSrc = null;
 let wasPlayingOnHide = false;
 let isInBackground = false;
+let bgKeepAliveInterval = null;
 
 function startSilentAudio() {
     if (silentAudioCtx) return;
     try {
         silentAudioCtx = new AudioContext();
         const buffer = silentAudioCtx.createBuffer(1, silentAudioCtx.sampleRate, silentAudioCtx.sampleRate);
+        // Bruit sub-audible (−80 dB) pour éviter que le navigateur optimise un buffer 100 % silence
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.0001;
         silentAudioSrc = silentAudioCtx.createBufferSource();
         silentAudioSrc.buffer = buffer;
         silentAudioSrc.loop = true;
@@ -183,6 +187,11 @@ function stopSilentAudio() {
     try { silentAudioSrc?.stop(); silentAudioCtx?.close(); } catch (_) {}
     silentAudioSrc = null;
     silentAudioCtx = null;
+}
+
+function stopBgKeepAlive() {
+    clearInterval(bgKeepAliveInterval);
+    bgKeepAliveInterval = null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -691,15 +700,11 @@ window.onYouTubeIframeAPIReady = function () {
         events: {
             onReady()        { playerReady = true; },
             onStateChange(e) {
-                if (e.data === YT.PlayerState.ENDED) playNext();
+                if (e.data === YT.PlayerState.ENDED) { stopBgKeepAlive(); playNext(); }
                 const playing = e.data === YT.PlayerState.PLAYING;
                 setPlayBtn(playing);
                 if (playing) startSilentAudio();
-                else if (!isInBackground) stopSilentAudio();
-                // YouTube se met en pause tout seul en arrière-plan : tenter de relancer
-                if (e.data === YT.PlayerState.PAUSED && isInBackground && wasPlayingOnHide) {
-                    setTimeout(() => { if (isInBackground) try { ytPlayer?.playVideo(); } catch (_) {} }, 600);
-                }
+                else if (!isInBackground) { stopSilentAudio(); stopBgKeepAlive(); }
                 if ('mediaSession' in navigator) {
                     navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
                 }
@@ -782,9 +787,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             isInBackground = true;
             wasPlayingOnHide = playerReady && ytPlayer &&
                 ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
+            // Intervalle qui relance YouTube s'il se met en pause en arrière-plan
+            if (wasPlayingOnHide && !bgKeepAliveInterval) {
+                bgKeepAliveInterval = setInterval(() => {
+                    if (!isInBackground || !ytPlayer) { stopBgKeepAlive(); return; }
+                    if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
+                        try { ytPlayer.playVideo(); } catch (_) {}
+                    }
+                }, 1500);
+            }
             return;
         }
         isInBackground = false;
+        stopBgKeepAlive();
         // Réactiver le contexte audio si le navigateur l'a suspendu
         if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
         // Retour au premier plan : reprendre si YouTube nous a mis en pause
