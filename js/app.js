@@ -707,12 +707,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         data = local;
         if (ghToken) cloudSave(data);
     } else if (hasCloud && hasLocal) {
-        // Les deux existent : garder la version la plus récente (lastModified)
-        if ((local.lastModified || 0) > (data.lastModified || 0)) {
-            // Local plus récent (ex: sauvegarde interrompue par rechargement) → pousser au cloud
+        const localTs = local.lastModified || 0;
+        const cloudTs = data.lastModified  || 0;
+        if (localTs >= cloudTs) {
+            // Local aussi récent ou plus récent que cloud (CDN potentiellement périmé)
+            // Local gagne TOUJOURS sur ex-æquo pour éviter l'écrasement par CDN périmé
             data = local;
-            if (ghToken) cloudSave(data);
+            if (ghToken && localTs > cloudTs) cloudSave(data); // push si local strictement plus récent
         } else {
+            // Cloud strictement plus récent → un autre appareil a fait des changements
             localStorage.setItem(CACHE_KEY, JSON.stringify(data));
         }
     } else if (data) {
