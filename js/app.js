@@ -882,7 +882,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Intervalle qui relance YouTube s'il se met en pause en arrière-plan
             if (wasPlayingOnHide && !bgKeepAliveInterval) {
                 bgKeepAliveInterval = setInterval(() => {
-                    if (!isInBackground || !ytPlayer) { stopBgKeepAlive(); return; }
+                    if (!isInBackground) { stopBgKeepAlive(); return; }
                     // Réveiller l'AudioContext si Chrome l'a suspendu
                     if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
                     if (!isPlaying) sendCmd('playVideo');
@@ -899,16 +899,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             wasPlayingOnHide = false;
             setTimeout(() => { if (!isPlaying) sendCmd('playVideo'); }, 400);
         }
-        // Sync multi-appareils : fusionner avec le cloud si il a des pistes plus récentes
+        // Sync multi-appareils : remplace par le cloud s'il est plus récent (pas de merge)
         if (pendingCloudSave) return;
         const fresh = await cloudLoad();
         if (!fresh?.profiles) return;
         const localTs = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}').lastModified || 0;
         if ((fresh.lastModified || 0) <= localTs) { setSyncStatus('synced'); return; }
-        const local = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-        const merged = mergeData(local?.profiles ? local : { version: 2, profiles: state.profiles }, fresh);
-        state.profiles = merged.profiles;
-        localStorage.setItem(CACHE_KEY, JSON.stringify(merged));
+        // Le cloud est plus récent → l'utiliser directement (suppressions incluses)
+        state.profiles = fresh.profiles;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
         if (state.activeProfileId && !state.profiles[state.activeProfileId]) {
             state.activeProfileId = null; showProfileScreen();
         } else if (state.activeProfileId) { render(); }
