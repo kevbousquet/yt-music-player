@@ -21,18 +21,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Inject sync token
         env:
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: sed -i "s|const DEFAULT_TOKEN    = '__SYNC_TOKEN__'|const DEFAULT_TOKEN    = '${SYNC_TOKEN}'|g" js/app.js
 
-      - uses: actions/configure-pages@v4
+      - uses: actions/configure-pages@v5
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: '.'
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
