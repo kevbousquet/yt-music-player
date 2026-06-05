@@ -78,7 +78,7 @@ async function cloudLoad(isRetry = false) {
     } catch (_) { return null; }
 }
 
-// Fusionne deux jeux de données : union des pistes par videoId, sans écrasement
+// Fusionne : ajoute les pistes du cloud absentes en local, sauf celles supprimées (tombstones)
 function mergeData(local, cloud) {
     const merged = JSON.parse(JSON.stringify(local));
     for (const [pid, cProf] of Object.entries(cloud.profiles || {})) {
@@ -87,10 +87,13 @@ function mergeData(local, cloud) {
             if (!merged.profiles[pid].playlists[plid]) {
                 merged.profiles[pid].playlists[plid] = cPl; continue;
             }
-            const lPl = merged.profiles[pid].playlists[plid];
+            const lPl      = merged.profiles[pid].playlists[plid];
             const existing = new Set(lPl.tracks.map(t => t.videoId));
+            const deleted  = new Set(lPl.deletedVideoIds || []); // tombstones
             for (const t of cPl.tracks) {
-                if (!existing.has(t.videoId)) { lPl.tracks.push(t); existing.add(t.videoId); }
+                if (!existing.has(t.videoId) && !deleted.has(t.videoId)) {
+                    lPl.tracks.push(t); existing.add(t.videoId);
+                }
             }
         }
     }
@@ -102,14 +105,7 @@ async function cloudSave(data) {
     syncTimer = null;
     if (!ghToken) { pendingCloudSave = false; setSyncStatus('offline'); return; }
     setSyncStatus('syncing');
-    // Charger le cloud pour obtenir le SHA et fusionner avant d'écraser
-    const cloudData = await cloudLoad();
-    if (cloudData?.profiles) {
-        data = mergeData(data, cloudData);
-        state.profiles = data.profiles;
-        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-        if (state.activeProfileId) render();
-    }
+    if (!dbSha) await cloudLoad(); // récupère le SHA sans merger
     try {
         const r = await fetch(GITHUB_API, {
             method: 'PUT',
@@ -129,13 +125,11 @@ async function cloudSave(data) {
             lastCloudSaveTime = Date.now();
             pendingCloudSave = false;
             setSyncStatus('synced');
-            if (state.activeProfileId) render();
         } else if (r.status === 409) {
-            // Conflit SHA : recharger puis réessayer
+            // Conflit SHA : nouveau SHA sans merger, puis réessayer
             await cloudLoad();
             await cloudSave(data);
         } else if (r.status === 401 && DEFAULT_TOKEN !== '__SYNC_TOKEN__' && ghToken !== DEFAULT_TOKEN) {
-            // Token localStorage révoqué : basculer sur le token injecté par CI
             localStorage.removeItem(TOKEN_KEY);
             ghToken = DEFAULT_TOKEN;
             localStorage.setItem(TOKEN_KEY, ghToken);
@@ -396,6 +390,12 @@ async function fetchTitleAndDuration(vid, profId, plId, idx, fetchTitle) {
 
 function delTrack(idx) {
     const pl = activePL(); if (!pl) return;
+    const track = pl.tracks[idx];
+    if (track) {
+        // Tombstone : empêche la sync de restaurer cette piste
+        if (!pl.deletedVideoIds) pl.deletedVideoIds = [];
+        if (!pl.deletedVideoIds.includes(track.videoId)) pl.deletedVideoIds.push(track.videoId);
+    }
     pl.tracks.splice(idx, 1);
     if (state.trackIndex >= pl.tracks.length) state.trackIndex = pl.tracks.length - 1;
     if (state.isShuffled) resetShuffle(pl.tracks.length);
