@@ -652,7 +652,7 @@ body {
     opacity: 0.4;
 }
 
-#yt-player { display: block; width: 100%; }
+#yt-iframe { display: none; width: 100%; height: 200px; border: none; }
 
 /* ── Now playing ── */
 .now-playing { text-align: center; width: 100%; }

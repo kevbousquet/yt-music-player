@@ -157,8 +157,12 @@ const state = {
     shufflePos:      -1,
 };
 
-let ytPlayer    = null;
-let playerReady = false;
+// ── État player ───────────────────────────────────────────────────────────────
+let isPlaying      = false;
+let autoNextTimer  = null;
+let timerStartedAt = null; // Date.now() au démarrage du timer
+let elapsedMs      = 0;    // ms déjà jouées avant la dernière pause
+let currentDurMs   = 0;    // durée totale en ms
 
 // ── Background audio keepalive ─────────────────────────────────────────────
 let silentAudioCtx = null;
@@ -338,40 +342,56 @@ function switchPlaylist(id) {
 }
 
 // ── Track actions ─────────────────────────────────────────────────────────────
+// ── Durée vidéo ───────────────────────────────────────────────────────────────
+function parseIsoDuration(iso) {
+    if (!iso) return 0;
+    const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    return m ? (parseInt(m[1]||0)*3600 + parseInt(m[2]||0)*60 + parseInt(m[3]||0)) : 0;
+}
+
+async function fetchVideoDuration(videoId) {
+    if (!ytApiKey) return 0;
+    try {
+        const r = await fetch(
+            `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${videoId}&key=${ytApiKey}`,
+            { signal: AbortSignal.timeout(5000) }
+        );
+        if (!r.ok) return 0;
+        return parseIsoDuration((await r.json()).items?.[0]?.contentDetails?.duration);
+    } catch (_) { return 0; }
+}
+
 function addTrack(rawUrl, customTitle) {
     const pl = activePL(); if (!pl) return;
     const vid = extractVideoId(rawUrl.trim());
     if (!vid) { alert('Lien YouTube non reconnu.\nEx: https://www.youtube.com/watch?v=…'); return; }
     const idx = pl.tracks.length;
-    pl.tracks.push({ id: uid(), videoId: vid, title: customTitle.trim() || 'Chargement…' });
+    pl.tracks.push({ id: uid(), videoId: vid, title: customTitle.trim() || 'Chargement…', duration: 0 });
     if (state.isShuffled) resetShuffle(pl.tracks.length);
     save(); renderTracks();
-    if (!customTitle.trim()) {
-        const profId = state.activeProfileId;
-        const plId   = activeProfile()?.activePlaylistId;
-        fetchTitle(vid, profId, plId, idx);
-    }
+    const profId = state.activeProfileId;
+    const plId   = activeProfile()?.activePlaylistId;
+    fetchTitleAndDuration(vid, profId, plId, idx, !customTitle.trim());
 }
 
-function fetchTitle(vid, profId, plId, idx) {
-    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`)
-        .then(r => r.ok ? r.json() : Promise.reject())
-        .then(d => {
-            const pl = state.profiles[profId]?.playlists[plId];
-            if (!pl?.tracks[idx]) return;
-            pl.tracks[idx].title = d.title;
-            save(); renderTracks();
-            if (state.activeProfileId === profId &&
-                activeProfile()?.activePlaylistId === plId &&
-                state.trackIndex === idx) renderNowPlaying();
-        })
-        .catch(() => {
-            const pl = state.profiles[profId]?.playlists[plId];
-            if (pl?.tracks[idx]?.title === 'Chargement…') {
-                pl.tracks[idx].title = `Piste ${idx + 1}`;
-                save(); renderTracks();
-            }
-        });
+async function fetchTitleAndDuration(vid, profId, plId, idx, fetchTitle) {
+    const getTrack = () => state.profiles[profId]?.playlists[plId]?.tracks[idx];
+
+    if (fetchTitle) {
+        try {
+            const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`);
+            const d = r.ok ? await r.json() : null;
+            const t = getTrack();
+            if (t) { t.title = d?.title || `Piste ${idx + 1}`; save(); renderTracks(); }
+        } catch (_) {
+            const t = getTrack();
+            if (t?.title === 'Chargement…') { t.title = `Piste ${idx + 1}`; save(); renderTracks(); }
+        }
+    }
+
+    const duration = await fetchVideoDuration(vid);
+    const t = getTrack();
+    if (t) { t.duration = duration; save(); }
 }
 
 function delTrack(idx) {
@@ -399,10 +419,7 @@ function playAt(realIdx) {
         state.shufflePos = pos !== -1 ? pos : 0;
     }
     const track = pl.tracks[realIdx];
-    if (playerReady && ytPlayer) {
-        ytPlayer.loadVideoById(track.videoId);
-        document.getElementById('player-placeholder').style.display = 'none';
-    }
+    loadVideo(track.videoId, track.duration || 0);
     updateMediaSession(track, track.videoId);
     renderNowPlaying(); renderTracks();
 }
@@ -424,11 +441,16 @@ function playPrev() {
 }
 
 function togglePlayPause() {
-    if (!playerReady || !ytPlayer) return;
     if (state.trackIndex < 0) { playAt(0); return; }
-    const ps = ytPlayer.getPlayerState();
-    if (ps === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
-    else ytPlayer.playVideo();
+    if (isPlaying) {
+        sendCmd('pauseVideo'); pauseTimer();
+        isPlaying = false; setPlayBtn(false);
+        if (!isInBackground) stopSilentAudio();
+    } else {
+        sendCmd('playVideo'); resumeTimer();
+        isPlaying = true; setPlayBtn(true);
+        startSilentAudio();
+    }
 }
 
 function toggleShuffle() {
@@ -630,6 +652,22 @@ async function searchYT(query) {
             author:  i.snippet.channelTitle,
             lengthSeconds: 0,
         }));
+        // Récupère les durées en batch
+        const ids = results.map(r => r.videoId).join(',');
+        if (ids && ytApiKey) {
+            try {
+                const dr = await fetch(
+                    `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${ytApiKey}`,
+                    { signal: AbortSignal.timeout(5000) }
+                );
+                if (dr.ok) {
+                    const dd = await dr.json();
+                    const map = {};
+                    (dd.items || []).forEach(i => { map[i.id] = parseIsoDuration(i.contentDetails?.duration); });
+                    results.forEach(r => { r.lengthSeconds = map[r.videoId] || 0; });
+                }
+            } catch (_) {}
+        }
         renderSearchResults(results);
     } catch (_) {
         el.innerHTML = '<p class="empty">Erreur réseau. Vérifiez votre connexion.</p>';
@@ -676,8 +714,12 @@ function hideSearchModal() {
 // ── Media Session API (contrôles écran verrouillé) ───────────────────────────
 function setupMediaSession() {
     if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.setActionHandler('play',          () => { ytPlayer?.playVideo();  setPlayBtn(true);  });
-    navigator.mediaSession.setActionHandler('pause',         () => { ytPlayer?.pauseVideo(); setPlayBtn(false); });
+    navigator.mediaSession.setActionHandler('play', () => {
+        sendCmd('playVideo'); resumeTimer(); isPlaying = true; setPlayBtn(true); startSilentAudio();
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+        sendCmd('pauseVideo'); pauseTimer(); isPlaying = false; setPlayBtn(false);
+    });
     navigator.mediaSession.setActionHandler('nexttrack',     playNext);
     navigator.mediaSession.setActionHandler('previoustrack', playPrev);
 }
@@ -697,41 +739,73 @@ function updateMediaSession(track, videoId) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
-// ── Player youtube-nocookie.com (embeds sans pub, API officielle) ────────────
-window.onYouTubeIframeAPIReady = function () {
-    ytPlayer = new YT.Player('yt-player', {
-        height: '200',
-        width: '100%',
-        host: 'https://www.youtube-nocookie.com',
-        playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1, playsinline: 1 },
-        events: {
-            onReady()        {
-                playerReady = true;
-                // Accorder autoplay à l'iframe pour que Chrome autorise
-                // la reprise audio en arrière-plan
-                const iframe = ytPlayer.getIframe?.();
-                if (iframe) iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
-            },
-            onStateChange(e) {
-                if (e.data === YT.PlayerState.ENDED) { stopBgKeepAlive(); playNext(); }
-                const playing = e.data === YT.PlayerState.PLAYING;
-                setPlayBtn(playing);
-                if (playing) startSilentAudio();
-                else if (!isInBackground) { stopSilentAudio(); stopBgKeepAlive(); }
-                // YouTube s'est mis en pause tout seul en arrière-plan → relancer immédiatement
-                if (e.data === YT.PlayerState.PAUSED && isInBackground && wasPlayingOnHide) {
-                    try { ytPlayer.playVideo(); } catch (_) {}
-                }
-                if ('mediaSession' in navigator) {
-                    // Dire au système qu'on veut jouer, même si YouTube est en pause
-                    navigator.mediaSession.playbackState =
-                        (playing || (isInBackground && wasPlayingOnHide)) ? 'playing' : 'paused';
-                }
-            },
-            onError()        { setTimeout(playNext, 1500); },
-        },
-    });
-};
+// ── Player yout-ube.com (sans pubs) + timer durée pour l'enchaînement ────────
+function loadVideo(videoId, durationSec) {
+    clearTimeout(autoNextTimer);
+    autoNextTimer  = null;
+    elapsedMs      = 0;
+    timerStartedAt = null;
+    currentDurMs   = (durationSec || 0) * 1000;
+
+    const iframe = document.getElementById('yt-iframe');
+    const origin = encodeURIComponent(location.origin);
+    iframe.src = `https://www.yout-ube.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&playsinline=1&origin=${origin}`;
+    iframe.style.display = 'block';
+    document.getElementById('player-placeholder').style.display = 'none';
+    isPlaying = true; setPlayBtn(true);
+    startSilentAudio();
+
+    // Fallback timer : si postMessage ne répond pas dans 3 s, démarrer quand même
+    if (currentDurMs > 3000) {
+        setTimeout(() => { if (isPlaying && !timerStartedAt) resumeTimer(); }, 3000);
+    }
+}
+
+function sendCmd(func) {
+    document.getElementById('yt-iframe')?.contentWindow
+        ?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*');
+}
+
+function pauseTimer() {
+    if (!timerStartedAt) return;
+    elapsedMs += Date.now() - timerStartedAt;
+    timerStartedAt = null;
+    clearTimeout(autoNextTimer);
+    autoNextTimer = null;
+}
+
+function resumeTimer() {
+    if (!currentDurMs || timerStartedAt) return;
+    const remaining = currentDurMs - elapsedMs + 3000; // +3 s buffer
+    if (remaining <= 2000) { playNext(); return; }
+    timerStartedAt = Date.now();
+    autoNextTimer = setTimeout(() => { autoNextTimer = null; playNext(); }, remaining);
+}
+
+// Écoute les events du player yout-ube.com via postMessage (si disponibles)
+window.addEventListener('message', e => {
+    try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (!data?.event) return;
+        if (data.event === 'onStateChange') {
+            if (data.info === 1) {        // PLAYING
+                if (!timerStartedAt) resumeTimer();
+                isPlaying = true; setPlayBtn(true);
+                startSilentAudio();
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+            } else if (data.info === 2) { // PAUSED
+                pauseTimer();
+                isPlaying = false; setPlayBtn(false);
+                if (!isInBackground) stopSilentAudio();
+                if (isInBackground && wasPlayingOnHide) sendCmd('playVideo');
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+            } else if (data.info === 0) { // ENDED
+                clearTimeout(autoNextTimer); playNext();
+            }
+        }
+        if (data.event === 'onError') { clearTimeout(autoNextTimer); setTimeout(playNext, 1500); }
+    } catch (_) {}
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -804,17 +878,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('visibilitychange', async () => {
         if (document.hidden) {
             isInBackground = true;
-            wasPlayingOnHide = playerReady && ytPlayer &&
-                ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
+            wasPlayingOnHide = isPlaying;
             // Intervalle qui relance YouTube s'il se met en pause en arrière-plan
             if (wasPlayingOnHide && !bgKeepAliveInterval) {
                 bgKeepAliveInterval = setInterval(() => {
                     if (!isInBackground || !ytPlayer) { stopBgKeepAlive(); return; }
                     // Réveiller l'AudioContext si Chrome l'a suspendu
                     if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
-                    if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
-                        try { ytPlayer.playVideo(); } catch (_) {}
-                    }
+                    if (!isPlaying) sendCmd('playVideo');
                 }, 1500);
             }
             return;
@@ -824,13 +895,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Réactiver le contexte audio si le navigateur l'a suspendu
         if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
         // Retour au premier plan : reprendre si YouTube nous a mis en pause
-        if (wasPlayingOnHide && playerReady && ytPlayer) {
+        if (wasPlayingOnHide) {
             wasPlayingOnHide = false;
-            setTimeout(() => {
-                if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
-                    ytPlayer.playVideo();
-                }
-            }, 400);
+            setTimeout(() => { if (!isPlaying) sendCmd('playVideo'); }, 400);
         }
         // Sync multi-appareils : fusionner avec le cloud si il a des pistes plus récentes
         if (pendingCloudSave) return;
