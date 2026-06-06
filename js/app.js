@@ -760,6 +760,19 @@ function loadVideo(videoId, durationSec) {
 
     const iframe = document.getElementById('yt-iframe');
     const origin = encodeURIComponent(location.origin);
+
+    // S'abonner aux événements du player dès que l'iframe est chargée.
+    // Sans ce message 'listening', YouTube ne renvoie pas onStateChange.
+    iframe.onload = () => {
+        const reg = () => iframe.contentWindow?.postMessage(
+            JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'
+        );
+        reg();
+        setTimeout(reg, 800);
+        setTimeout(reg, 2000);
+        iframe.onload = null;
+    };
+
     iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&playsinline=1&origin=${origin}`;
     iframe.style.display = 'block';
     document.getElementById('player-placeholder').style.display = 'none';
