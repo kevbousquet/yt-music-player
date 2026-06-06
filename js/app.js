@@ -569,10 +569,12 @@ function playPrev() {
 function togglePlayPause() {
     if (state.trackIndex < 0) { playAt(0); return; }
     if (isPlaying) {
-        sendCmd('pauseVideo'); pauseTimer();
+        wasPlayingOnHide = false; // pause volontaire
+        clearInterval(bgCheckInterval); bgCheckInterval = null;
+        sendCmd('pauseVideo'); stopKeepAlive(); pauseTimer();
         isPlaying = false; setPlayBtn(false);
     } else {
-        sendCmd('playVideo'); resumeTimer();
+        sendCmd('playVideo'); startKeepAlive(); resumeTimer();
         isPlaying = true; setPlayBtn(true);
     }
 }
@@ -839,10 +841,15 @@ function hideSearchModal() {
 function setupMediaSession() {
     if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.setActionHandler('play', () => {
-        sendCmd('playVideo'); resumeTimer(); isPlaying = true; setPlayBtn(true);
+        wasPlayingOnHide = true;
+        sendCmd('playVideo'); startKeepAlive(); resumeTimer(); isPlaying = true; setPlayBtn(true);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     });
     navigator.mediaSession.setActionHandler('pause', () => {
-        sendCmd('pauseVideo'); pauseTimer(); isPlaying = false; setPlayBtn(false);
+        wasPlayingOnHide = false; // pause volontaire — ne pas reprendre automatiquement
+        clearInterval(bgCheckInterval); bgCheckInterval = null;
+        sendCmd('pauseVideo'); stopKeepAlive(); pauseTimer(); isPlaying = false; setPlayBtn(false);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     });
     navigator.mediaSession.setActionHandler('nexttrack',     playNext);
     navigator.mediaSession.setActionHandler('previoustrack', playPrev);
