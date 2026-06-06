@@ -750,7 +750,49 @@ function updateMediaSession(track, videoId) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
-// ── Player yout-ube.com (sans pubs) + timer durée pour l'enchaînement ────────
+// ── YouTube IFrame Player API ─────────────────────────────────────────────────
+let ytPlayer       = null;
+let playerReady    = false;
+let pendingVideoId = null;
+
+window.onYouTubeIframeAPIReady = function() {
+    playerReady = true;
+    if (pendingVideoId) { createPlayer(pendingVideoId); pendingVideoId = null; }
+};
+
+function createPlayer(videoId) {
+    ytPlayer = new YT.Player('yt-player', {
+        height: '200',
+        width: '100%',
+        host: 'https://www.youtube-nocookie.com',
+        videoId,
+        playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+        events: {
+            onStateChange: onPlayerStateChange,
+            onError: () => { clearTimeout(autoNextTimer); setTimeout(playNext, 1500); },
+        },
+    });
+}
+
+function onPlayerStateChange(event) {
+    if (event.data === 1) {        // PLAYING
+        const dur = ytPlayer.getDuration();
+        if (dur > 0) currentDurMs = dur * 1000;
+        if (!timerStartedAt) resumeTimer();
+        isPlaying = true; setPlayBtn(true);
+        startSilentAudio();
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    } else if (event.data === 2) { // PAUSED
+        pauseTimer();
+        isPlaying = false; setPlayBtn(false);
+        if (!isInBackground) stopSilentAudio();
+        if (isInBackground && wasPlayingOnHide) sendCmd('playVideo');
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    } else if (event.data === 0) { // ENDED
+        clearTimeout(autoNextTimer); playNext();
+    }
+}
+
 function loadVideo(videoId, durationSec) {
     clearTimeout(autoNextTimer);
     autoNextTimer  = null;
@@ -758,36 +800,21 @@ function loadVideo(videoId, durationSec) {
     timerStartedAt = null;
     currentDurMs   = (durationSec || 0) * 1000;
 
-    const iframe = document.getElementById('yt-iframe');
-    const origin = encodeURIComponent(location.origin);
-
-    // S'abonner aux événements du player dès que l'iframe est chargée.
-    // Sans ce message 'listening', YouTube ne renvoie pas onStateChange.
-    iframe.onload = () => {
-        const reg = () => iframe.contentWindow?.postMessage(
-            JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'
-        );
-        reg();
-        setTimeout(reg, 800);
-        setTimeout(reg, 2000);
-        iframe.onload = null;
-    };
-
-    iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&playsinline=1&origin=${origin}`;
-    iframe.style.display = 'block';
     document.getElementById('player-placeholder').style.display = 'none';
     isPlaying = true; setPlayBtn(true);
     startSilentAudio();
 
-    // Fallback timer : si postMessage ne répond pas dans 3 s, démarrer quand même
-    if (currentDurMs > 3000) {
-        setTimeout(() => { if (isPlaying && !timerStartedAt) resumeTimer(); }, 3000);
+    if (ytPlayer) {
+        ytPlayer.loadVideoById(videoId);
+    } else if (playerReady) {
+        createPlayer(videoId);
+    } else {
+        pendingVideoId = videoId;
     }
 }
 
 function sendCmd(func) {
-    document.getElementById('yt-iframe')?.contentWindow
-        ?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*');
+    try { ytPlayer?.[func]?.(); } catch (_) {}
 }
 
 function pauseTimer() {
@@ -805,31 +832,6 @@ function resumeTimer() {
     timerStartedAt = Date.now();
     autoNextTimer = setTimeout(() => { autoNextTimer = null; playNext(); }, remaining);
 }
-
-// Écoute les events du player yout-ube.com via postMessage (si disponibles)
-window.addEventListener('message', e => {
-    try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (!data?.event) return;
-        if (data.event === 'onStateChange') {
-            if (data.info === 1) {        // PLAYING
-                if (!timerStartedAt) resumeTimer();
-                isPlaying = true; setPlayBtn(true);
-                startSilentAudio();
-                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-            } else if (data.info === 2) { // PAUSED
-                pauseTimer();
-                isPlaying = false; setPlayBtn(false);
-                if (!isInBackground) stopSilentAudio();
-                if (isInBackground && wasPlayingOnHide) sendCmd('playVideo');
-                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-            } else if (data.info === 0) { // ENDED
-                clearTimeout(autoNextTimer); playNext();
-            }
-        }
-        if (data.event === 'onError') { clearTimeout(autoNextTimer); setTimeout(playNext, 1500); }
-    } catch (_) {}
-});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
