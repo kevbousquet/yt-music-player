@@ -176,7 +176,7 @@ async function fetchAudioStream(videoId) {
             const ctrl = new AbortController();
             const tid  = setTimeout(() => ctrl.abort(), 7000);
             const r = await fetch(
-                `${inst}/api/v1/videos/${videoId}?fields=adaptiveFormats`,
+                `${inst}/api/v1/videos/${videoId}?fields=adaptiveFormats&local=true`,
                 { signal: ctrl.signal }
             );
             clearTimeout(tid);
@@ -198,7 +198,17 @@ const audioEl = new Audio();
 audioEl.preload = 'none';
 
 audioEl.addEventListener('ended', () => { clearTimeout(autoNextTimer); playNext(); });
-audioEl.addEventListener('error', () => { clearTimeout(autoNextTimer); setTimeout(playNext, 1500); });
+audioEl.addEventListener('error', () => {
+    clearTimeout(autoNextTimer);
+    consecutiveFailures++;
+    if (consecutiveFailures >= 3) {
+        consecutiveFailures = 0;
+        showToast('Erreur audio répétée. Service indisponible.');
+        isPlaying = false; setPlayBtn(false);
+        return;
+    }
+    setTimeout(playNext, 1500);
+});
 audioEl.addEventListener('playing', () => {
     const dur = audioEl.duration;
     if (dur && isFinite(dur)) currentDurMs = dur * 1000;
