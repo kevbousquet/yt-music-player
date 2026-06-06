@@ -787,8 +787,14 @@ function onPlayerStateChange(event) {
     } else if (event.data === 2) { // PAUSED
         pauseTimer();
         isPlaying = false; setPlayBtn(false);
-        if (!isInBackground) stopSilentAudio();
-        if (isInBackground && wasPlayingOnHide) sendCmd('playVideo');
+        if (!document.hidden) {
+            stopSilentAudio();
+        } else {
+            // YouTube s'est auto-mis en pause car la page est cachée → rafale de reprise
+            [0, 200, 600, 1500].forEach(ms =>
+                setTimeout(() => { if (document.hidden) sendCmd('playVideo'); }, ms)
+            );
+        }
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     } else if (event.data === 0) { // ENDED
         clearTimeout(autoNextTimer); playNext();
@@ -907,7 +913,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (document.hidden) {
             isInBackground = true;
             wasPlayingOnHide = isPlaying;
-            // Intervalle qui relance YouTube s'il se met en pause en arrière-plan
+            if (isPlaying) {
+                // YouTube détecte la page cachée et se met en pause — on contre-attaque
+                // immédiatement puis en rafale pendant les premières secondes
+                sendCmd('playVideo');
+                [200, 500, 1000, 2000, 4000, 8000].forEach(ms =>
+                    setTimeout(() => { if (document.hidden) sendCmd('playVideo'); }, ms)
+                );
+            }
             if (wasPlayingOnHide && !bgKeepAliveInterval) {
                 bgKeepAliveInterval = setInterval(() => {
                     if (!isInBackground) { stopBgKeepAlive(); return; }
