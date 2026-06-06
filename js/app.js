@@ -760,7 +760,7 @@ function loadVideo(videoId, durationSec) {
 
     const iframe = document.getElementById('yt-iframe');
     const origin = encodeURIComponent(location.origin);
-    iframe.src = `https://www.yout-ube.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&playsinline=1&origin=${origin}`;
+    iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&rel=0&playsinline=1&origin=${origin}`;
     iframe.style.display = 'block';
     document.getElementById('player-placeholder').style.display = 'none';
     isPlaying = true; setPlayBtn(true);
