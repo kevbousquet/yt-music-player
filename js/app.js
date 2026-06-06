@@ -9,6 +9,7 @@ const YT_API_KEY_STORE = 'ytplayer_yt_api_key';
 const DEFAULT_TOKEN    = '__SYNC_TOKEN__';
 const DEFAULT_YT_KEY   = atob('QUl6YVN5QkJieHdZc2EzbGJlaEhNcUJYdUZ4Xzczazg1TFBmWHhr');
 const WORKER_KEY       = 'ytplayer_worker_url';
+const DEFAULT_WORKER   = 'https://yt-music.kevbousquetagenda.workers.dev';
 const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
 let syncTimer        = null;
@@ -912,7 +913,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     ytApiKey  = localStorage.getItem(YT_API_KEY_STORE) || DEFAULT_YT_KEY;
     if (!localStorage.getItem(YT_API_KEY_STORE)) localStorage.setItem(YT_API_KEY_STORE, ytApiKey);
-    workerUrl = localStorage.getItem(WORKER_KEY) || null;
+    workerUrl = localStorage.getItem(WORKER_KEY) || DEFAULT_WORKER;
     setSyncStatus(ghToken ? 'syncing' : 'offline');
 
     // 1. Charger depuis le cloud
