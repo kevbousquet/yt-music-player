@@ -8,6 +8,7 @@ const TOKEN_KEY        = 'ytplayer_gh_token';
 const YT_API_KEY_STORE = 'ytplayer_yt_api_key';
 const DEFAULT_TOKEN    = '__SYNC_TOKEN__';
 const DEFAULT_YT_KEY   = atob('QUl6YVN5QkJieHdZc2EzbGJlaEhNcUJYdUZ4Xzczazg1TFBmWHhr');
+const WORKER_KEY       = 'ytplayer_worker_url';
 const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
 let syncTimer        = null;
@@ -162,7 +163,55 @@ let currentDurMs   = 0;    // durée totale en ms
 let wasPlayingOnHide = false;
 let isInBackground   = false;
 
-// ── YouTube IFrame Player ─────────────────────────────────────────────────────
+// ── Worker-based audio streaming (arrière-plan natif) ────────────────────────
+let workerUrl      = null;
+let useNativeAudio = false;
+
+async function fetchAudioStream(videoId) {
+    if (!workerUrl) return null;
+    try {
+        const r = await fetch(
+            `${workerUrl.replace(/\/$/, '')}/?v=${videoId}`,
+            { signal: AbortSignal.timeout(10000) }
+        );
+        if (!r.ok) return null;
+        const { url } = await r.json();
+        return url || null;
+    } catch (_) { return null; }
+}
+
+const audioEl = new Audio();
+audioEl.preload = 'none';
+
+audioEl.addEventListener('ended',  () => { clearTimeout(autoNextTimer); playNext(); });
+audioEl.addEventListener('error',  () => {
+    clearTimeout(autoNextTimer);
+    consecutiveFailures++;
+    const plLen = activePL()?.tracks.length || 3;
+    if (consecutiveFailures >= plLen) {
+        consecutiveFailures = 0;
+        showToast('Aucune piste disponible.');
+        isPlaying = false; setPlayBtn(false);
+        return;
+    }
+    setTimeout(playNext, 500);
+});
+audioEl.addEventListener('playing', () => {
+    consecutiveFailures = 0;
+    const dur = audioEl.duration;
+    if (dur && isFinite(dur)) currentDurMs = dur * 1000;
+    if (!timerStartedAt) resumeTimer();
+    isPlaying = true; setPlayBtn(true);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+});
+audioEl.addEventListener('pause', () => {
+    if (document.hidden && wasPlayingOnHide) { audioEl.play().catch(() => {}); return; }
+    pauseTimer();
+    isPlaying = false; setPlayBtn(false);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+});
+
+// ── YouTube IFrame Player (fallback quand Worker indisponible) ────────────────
 let ytPlayer     = null;
 let ytPlayerReady = false;
 let pendingVideoId = null;
@@ -776,12 +825,12 @@ function updateMediaSession(track, videoId) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
-// ── Lecteur YouTube IFrame ────────────────────────────────────────────────────
+// ── Lecteur (Worker → audio natif | sinon YouTube IFrame) ────────────────────
 let loadVideoSeq        = 0;
 let consecutiveFailures = 0;
 
-function loadVideo(videoId, durationSec) {
-    ++loadVideoSeq;
+async function loadVideo(videoId, durationSec) {
+    const seq = ++loadVideoSeq;
     clearTimeout(autoNextTimer);
     autoNextTimer  = null;
     elapsedMs      = 0;
@@ -789,17 +838,43 @@ function loadVideo(videoId, durationSec) {
     currentDurMs   = (durationSec || 0) * 1000;
 
     document.getElementById('player-placeholder').style.display = 'none';
-
     isPlaying = true; setPlayBtn(true);
 
+    // ── Essayer le Worker d'abord (audio natif = arrière-plan) ──
+    if (workerUrl) {
+        const url = await fetchAudioStream(videoId);
+        if (seq !== loadVideoSeq) return;
+        if (url) {
+            useNativeAudio = true;
+            const coverEl = document.getElementById('cover-art');
+            if (coverEl) { coverEl.src = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`; coverEl.style.display = 'block'; }
+            const ytBox = document.getElementById('yt-player');
+            if (ytBox) ytBox.style.display = 'none';
+            audioEl.src = url;
+            audioEl.play().catch(() => {});
+            return;
+        }
+    }
+
+    // ── Fallback : YouTube IFrame ──
+    useNativeAudio = false;
+    const coverEl = document.getElementById('cover-art');
+    if (coverEl) coverEl.style.display = 'none';
+    const ytBox = document.getElementById('yt-player');
+    if (ytBox) ytBox.style.display = '';
     if (!ytPlayerReady) { pendingVideoId = videoId; return; }
     ytPlayer.loadVideoById(videoId);
 }
 
 function sendCmd(func) {
-    if (!ytPlayerReady) return;
-    if (func === 'playVideo')  ytPlayer.playVideo();
-    if (func === 'pauseVideo') ytPlayer.pauseVideo();
+    if (useNativeAudio) {
+        if (func === 'playVideo')  audioEl.play().catch(() => {});
+        if (func === 'pauseVideo') audioEl.pause();
+    } else {
+        if (!ytPlayerReady) return;
+        if (func === 'playVideo')  ytPlayer.playVideo();
+        if (func === 'pauseVideo') ytPlayer.pauseVideo();
+    }
 }
 
 function pauseTimer() {
@@ -835,8 +910,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    ytApiKey = localStorage.getItem(YT_API_KEY_STORE) || DEFAULT_YT_KEY;
+    ytApiKey  = localStorage.getItem(YT_API_KEY_STORE) || DEFAULT_YT_KEY;
     if (!localStorage.getItem(YT_API_KEY_STORE)) localStorage.setItem(YT_API_KEY_STORE, ytApiKey);
+    workerUrl = localStorage.getItem(WORKER_KEY) || null;
     setSyncStatus(ghToken ? 'syncing' : 'offline');
 
     // 1. Charger depuis le cloud
@@ -932,9 +1008,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             shareSection.style.display = 'none';
         }
+        const workerInput = document.getElementById('worker-url-input');
+        if (workerInput) workerInput.value = workerUrl || '';
         document.getElementById('sync-setup-modal').style.display = 'flex';
     }
     document.getElementById('btn-sync-setup').addEventListener('click', openSyncModal);
+
+    document.getElementById('btn-save-worker-url')?.addEventListener('click', () => {
+        const val = document.getElementById('worker-url-input').value.trim();
+        if (val) {
+            workerUrl = val.replace(/\/$/, '');
+            localStorage.setItem(WORKER_KEY, workerUrl);
+            showToast('✓ Worker URL enregistrée — arrière-plan activé !');
+        } else {
+            workerUrl = null;
+            localStorage.removeItem(WORKER_KEY);
+            showToast('Worker URL supprimée.');
+        }
+    });
 
     document.getElementById('btn-save-token').addEventListener('click', () => {
         const key = document.getElementById('sync-token-input').value.trim();
