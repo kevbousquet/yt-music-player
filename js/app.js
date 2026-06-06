@@ -161,8 +161,41 @@ let elapsedMs      = 0;    // ms déjà jouées avant la dernière pause
 let currentDurMs   = 0;    // durée totale en ms
 
 // ── Background ────────────────────────────────────────────────────────────────
-let wasPlayingOnHide = false;
-let isInBackground   = false;
+let wasPlayingOnHide     = false;
+let isInBackground       = false;
+let bgCheckInterval      = null;
+
+// ── Silent-audio keepalive (maintient la session audio pour l'arrière-plan) ──
+const keepAliveEl = new Audio();
+keepAliveEl.loop  = true;
+keepAliveEl.volume = 0.001; // quasi-inaudible mais non nul
+
+function initKeepAliveAudio() {
+    if (keepAliveEl.src) return;
+    try {
+        const sr = 8000, ns = sr >> 1; // 0.5 s
+        const buf = new ArrayBuffer(44 + ns);
+        const v   = new DataView(buf);
+        const s   = (x, o) => v.setUint32(o, x, false);
+        s(0x52494646, 0); v.setUint32(4, 36 + ns, true); s(0x57415645, 8);
+        s(0x666d7420, 12); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+        v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr, true);
+        v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+        s(0x64617461, 36); v.setUint32(40, ns, true);
+        new Uint8Array(buf, 44).fill(0x80);
+        keepAliveEl.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    } catch (_) {}
+}
+
+function startKeepAlive() {
+    if (useNativeAudio) return;
+    initKeepAliveAudio();
+    keepAliveEl.play().catch(() => {});
+}
+
+function stopKeepAlive() {
+    keepAliveEl.pause();
+}
 
 // ── Worker-based audio streaming (arrière-plan natif) ────────────────────────
 let workerUrl      = null;
@@ -173,7 +206,7 @@ async function fetchAudioStream(videoId) {
     try {
         const r = await fetch(
             `${workerUrl.replace(/\/$/, '')}/?v=${videoId}`,
-            { signal: AbortSignal.timeout(10000) }
+            { signal: AbortSignal.timeout(5000) }
         );
         if (!r.ok) return null;
         const { url } = await r.json();
@@ -245,6 +278,7 @@ function onYTReady() {
 function onYTStateChange(e) {
     if (e.data === YT.PlayerState.ENDED) {
         clearTimeout(autoNextTimer);
+        stopKeepAlive();
         playNext();
     } else if (e.data === YT.PlayerState.PLAYING) {
         consecutiveFailures = 0;
@@ -252,12 +286,15 @@ function onYTStateChange(e) {
         if (dur && isFinite(dur)) currentDurMs = dur * 1000;
         if (!timerStartedAt) resumeTimer();
         isPlaying = true; setPlayBtn(true);
+        startKeepAlive();
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     } else if (e.data === YT.PlayerState.PAUSED) {
         if (document.hidden && wasPlayingOnHide) {
-            setTimeout(() => ytPlayer?.playVideo(), 200);
+            // YouTube detected background — resume immediately
+            setTimeout(() => { if (wasPlayingOnHide) ytPlayer?.playVideo(); }, 50);
             return;
         }
+        stopKeepAlive();
         pauseTimer();
         isPlaying = false; setPlayBtn(false);
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -847,6 +884,8 @@ async function loadVideo(videoId, durationSec) {
         if (seq !== loadVideoSeq) return;
         if (url) {
             useNativeAudio = true;
+            stopKeepAlive();
+            clearInterval(bgCheckInterval); bgCheckInterval = null;
             const coverEl = document.getElementById('cover-art');
             if (coverEl) { coverEl.src = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`; coverEl.style.display = 'block'; }
             const ytBox = document.getElementById('yt-player');
@@ -967,9 +1006,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (document.hidden) {
             isInBackground   = true;
             wasPlayingOnHide = isPlaying;
+            // Vérification périodique toutes les 2 s si IFrame joue en arrière-plan
+            if (isPlaying && !useNativeAudio && ytPlayerReady) {
+                bgCheckInterval = setInterval(() => {
+                    if (wasPlayingOnHide && ytPlayerReady) {
+                        try {
+                            const s = ytPlayer.getPlayerState?.();
+                            if (s === YT.PlayerState.PAUSED) ytPlayer.playVideo();
+                        } catch (_) {}
+                    }
+                }, 2000);
+            }
             return;
         }
-        isInBackground   = false;
+        isInBackground = false;
+        clearInterval(bgCheckInterval);
+        bgCheckInterval = null;
         // Reprendre si YouTube a mis en pause en arrière-plan
         if (wasPlayingOnHide && ytPlayerReady) {
             try { ytPlayer.playVideo(); } catch (_) {}
