@@ -162,70 +162,70 @@ let currentDurMs   = 0;    // durée totale en ms
 let wasPlayingOnHide = false;
 let isInBackground   = false;
 
-// ── Invidious API : stream audio direct (sans pub, lecture arrière-plan native) ─
-const INVIDIOUS_INSTANCES = [
-    'https://iv.melmac.space',
-    'https://invidious.io.lol',
-    'https://inv.nadeko.net',
-    'https://yewtu.be',
-    'https://invidious.fdn.fr',
-    'https://invidious.privacyredirect.com',
-];
+// ── YouTube IFrame Player ─────────────────────────────────────────────────────
+let ytPlayer     = null;
+let ytPlayerReady = false;
+let pendingVideoId = null;
 
-async function fetchAudioStream(videoId) {
-    for (const inst of INVIDIOUS_INSTANCES) {
-        try {
-            const ctrl = new AbortController();
-            const tid  = setTimeout(() => ctrl.abort(), 7000);
-            const r = await fetch(
-                `${inst}/api/v1/videos/${videoId}?fields=adaptiveFormats&local=true`,
-                { signal: ctrl.signal }
-            );
-            clearTimeout(tid);
-            if (!r.ok) continue;
-            const { adaptiveFormats = [] } = await r.json();
-            const audio = adaptiveFormats.filter(s => s.type?.startsWith('audio') && s.url);
-            // Préférer AAC/MP4 (meilleure compat Android), sinon plus haut bitrate
-            const best  = audio.find(s => s.container === 'm4a' || s.container === 'mp4')
-                       || audio.sort((a, b) => parseInt(b.bitrate) - parseInt(a.bitrate))[0];
-            if (best?.url) return best.url;
-        } catch (_) {}
-    }
-    return null;
+window.onYouTubeIframeAPIReady = function () {
+    ytPlayer = new YT.Player('yt-player', {
+        height: '200',
+        width:  '100%',
+        playerVars: {
+            autoplay:       1,
+            controls:       0,
+            disablekb:      1,
+            modestbranding: 1,
+            rel:            0,
+            origin:         location.origin,
+        },
+        events: {
+            onReady:       onYTReady,
+            onStateChange: onYTStateChange,
+            onError:       onYTError,
+        },
+    });
+};
+
+function onYTReady() {
+    ytPlayerReady = true;
+    if (pendingVideoId) { ytPlayer.loadVideoById(pendingVideoId); pendingVideoId = null; }
 }
 
-// Élément <audio> natif : le navigateur le lit en arrière-plan sans restriction,
-// contrairement à un iframe YouTube qui se met en pause dès que la page est cachée.
-const audioEl = new Audio();
-audioEl.preload = 'none';
+function onYTStateChange(e) {
+    if (e.data === YT.PlayerState.ENDED) {
+        clearTimeout(autoNextTimer);
+        playNext();
+    } else if (e.data === YT.PlayerState.PLAYING) {
+        consecutiveFailures = 0;
+        const dur = ytPlayer.getDuration?.();
+        if (dur && isFinite(dur)) currentDurMs = dur * 1000;
+        if (!timerStartedAt) resumeTimer();
+        isPlaying = true; setPlayBtn(true);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    } else if (e.data === YT.PlayerState.PAUSED) {
+        if (document.hidden && wasPlayingOnHide) {
+            setTimeout(() => ytPlayer?.playVideo(), 200);
+            return;
+        }
+        pauseTimer();
+        isPlaying = false; setPlayBtn(false);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    }
+}
 
-audioEl.addEventListener('ended', () => { clearTimeout(autoNextTimer); playNext(); });
-audioEl.addEventListener('error', () => {
+function onYTError() {
     clearTimeout(autoNextTimer);
     consecutiveFailures++;
     const plLen = activePL()?.tracks.length || 3;
     if (consecutiveFailures >= plLen) {
         consecutiveFailures = 0;
-        showToast('Aucune piste disponible. Service audio indisponible.');
+        showToast('Aucune piste disponible.');
         isPlaying = false; setPlayBtn(false);
         return;
     }
     setTimeout(playNext, 500);
-});
-audioEl.addEventListener('playing', () => {
-    consecutiveFailures = 0; // reset uniquement quand la piste lit vraiment
-    const dur = audioEl.duration;
-    if (dur && isFinite(dur)) currentDurMs = dur * 1000;
-    if (!timerStartedAt) resumeTimer();
-    isPlaying = true; setPlayBtn(true);
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-});
-audioEl.addEventListener('pause', () => {
-    if (document.hidden && wasPlayingOnHide) { audioEl.play().catch(() => {}); return; }
-    pauseTimer();
-    isPlaying = false; setPlayBtn(false);
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-});
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -776,12 +776,12 @@ function updateMediaSession(track, videoId) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
-// ── Lecteur audio (Invidious API) ─────────────────────────────────────────────
+// ── Lecteur YouTube IFrame ────────────────────────────────────────────────────
 let loadVideoSeq        = 0;
 let consecutiveFailures = 0;
 
-async function loadVideo(videoId, durationSec) {
-    const seq = ++loadVideoSeq;
+function loadVideo(videoId, durationSec) {
+    ++loadVideoSeq;
     clearTimeout(autoNextTimer);
     autoNextTimer  = null;
     elapsedMs      = 0;
@@ -789,34 +789,17 @@ async function loadVideo(videoId, durationSec) {
     currentDurMs   = (durationSec || 0) * 1000;
 
     document.getElementById('player-placeholder').style.display = 'none';
-    const coverEl = document.getElementById('cover-art');
-    if (coverEl) {
-        coverEl.src   = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-        coverEl.style.display = 'block';
-    }
+
     isPlaying = true; setPlayBtn(true);
 
-    const url = await fetchAudioStream(videoId);
-    if (seq !== loadVideoSeq) return;
-    if (!url) {
-        consecutiveFailures++;
-        isPlaying = false; setPlayBtn(false);
-        const plLen = activePL()?.tracks.length || 3;
-        if (consecutiveFailures >= plLen) {
-            consecutiveFailures = 0;
-            showToast('Service audio indisponible. Vérifiez votre connexion.');
-            return;
-        }
-        setTimeout(playNext, 500);
-        return;
-    }
-    audioEl.src = url;
-    audioEl.play().catch(() => {});
+    if (!ytPlayerReady) { pendingVideoId = videoId; return; }
+    ytPlayer.loadVideoById(videoId);
 }
 
 function sendCmd(func) {
-    if (func === 'playVideo')  audioEl.play().catch(() => {});
-    if (func === 'pauseVideo') audioEl.pause();
+    if (!ytPlayerReady) return;
+    if (func === 'playVideo')  ytPlayer.playVideo();
+    if (func === 'pauseVideo') ytPlayer.pauseVideo();
 }
 
 function pauseTimer() {
@@ -902,7 +885,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         showProfileScreen();
     }
 
-    // 4. Sync multi-appareils au retour au premier plan
+    // 4. Sync multi-appareils + reprise arrière-plan
     document.addEventListener('visibilitychange', async () => {
         if (document.hidden) {
             isInBackground   = true;
@@ -910,6 +893,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         isInBackground   = false;
+        // Reprendre si YouTube a mis en pause en arrière-plan
+        if (wasPlayingOnHide && ytPlayerReady) {
+            try { ytPlayer.playVideo(); } catch (_) {}
+        }
         wasPlayingOnHide = false;
         // Sync multi-appareils : remplace par le cloud s'il est plus récent (pas de merge)
         if (pendingCloudSave) return;
