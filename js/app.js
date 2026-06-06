@@ -420,6 +420,17 @@ function playAt(realIdx) {
     }
     const track = pl.tracks[realIdx];
     loadVideo(track.videoId, track.duration || 0);
+    // Durée inconnue : la récupérer et démarrer le timer dès qu'on l'a
+    if (!track.duration) {
+        const profId = state.activeProfileId;
+        const plId   = activeProfile()?.activePlaylistId;
+        fetchVideoDuration(track.videoId).then(dur => {
+            if (!dur || state.trackIndex !== realIdx) return;
+            const t = state.profiles[profId]?.playlists[plId]?.tracks[realIdx];
+            if (t) { t.duration = dur; save(); }
+            if (isPlaying && !timerStartedAt) { currentDurMs = dur * 1000; resumeTimer(); }
+        });
+    }
     updateMediaSession(track, track.videoId);
     renderNowPlaying(); renderTracks();
 }
@@ -684,13 +695,13 @@ function renderSearchResults(results) {
                 <div class="result-title">${esc(v.title)}</div>
                 <div class="result-meta">${esc(v.author)} · ${formatDuration(v.lengthSeconds)}</div>
             </div>
-            <button class="btn-add-result" data-vid="${v.videoId}" data-title="${esc(v.title)}" title="Ajouter à la playlist">+</button>
+            <button class="btn-add-result" data-vid="${v.videoId}" data-title="${esc(v.title)}" data-dur="${v.lengthSeconds || 0}" title="Ajouter à la playlist">+</button>
         </div>`).join('');
 
     el.querySelectorAll('.btn-add-result').forEach(btn => {
         btn.addEventListener('click', () => {
             const pl = activePL(); if (!pl) return;
-            pl.tracks.push({ id: uid(), videoId: btn.dataset.vid, title: btn.dataset.title });
+            pl.tracks.push({ id: uid(), videoId: btn.dataset.vid, title: btn.dataset.title, duration: parseInt(btn.dataset.dur || '0') });
             if (state.isShuffled) resetShuffle(pl.tracks.length);
             save(); renderTracks();
             btn.textContent = '✓';
