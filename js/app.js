@@ -158,48 +158,53 @@ let timerStartedAt = null; // Date.now() au démarrage du timer
 let elapsedMs      = 0;    // ms déjà jouées avant la dernière pause
 let currentDurMs   = 0;    // durée totale en ms
 
-// ── Background audio keepalive ─────────────────────────────────────────────
-let silentAudioEl    = null;
+// ── Background ────────────────────────────────────────────────────────────────
 let wasPlayingOnHide = false;
 let isInBackground   = false;
-let bgKeepAliveInterval = null;
 
-// WAV silencieux généré à l'exécution : 100 ms à 8 kHz, 8-bit, mono.
-// Un <audio loop> sur ce fichier maintient la session audio Android sans
-// dépendre de l'AudioContext (qui se suspend en arrière-plan sur Chrome).
-const SILENT_WAV = (() => {
-    const N = 800;
-    const buf = new Uint8Array(44 + N);
-    const d = new DataView(buf.buffer);
-    const ws = (o, s) => s.split('').forEach((c, i) => (buf[o + i] = c.charCodeAt(0)));
-    ws(0, 'RIFF'); d.setUint32(4, 36 + N, true);
-    ws(8, 'WAVE'); ws(12, 'fmt '); d.setUint32(16, 16, true);
-    d.setUint16(20, 1, true); d.setUint16(22, 1, true);
-    d.setUint32(24, 8000, true); d.setUint32(28, 8000, true);
-    d.setUint16(32, 1, true); d.setUint16(34, 8, true);
-    ws(36, 'data'); d.setUint32(40, N, true);
-    buf.fill(128, 44);
-    let b = ''; buf.forEach(v => (b += String.fromCharCode(v)));
-    return 'data:audio/wav;base64,' + btoa(b);
-})();
+// ── Piped API : stream audio direct (sans pub, lecture arrière-plan native) ───
+const PIPED_INSTANCES = [
+    'https://pipedapi.kavin.rocks',
+    'https://api.piped.projectsegfau.lt',
+    'https://piped-api.garudalinux.org',
+];
 
-function startSilentAudio() {
-    if (silentAudioEl) return;
-    silentAudioEl        = new Audio(SILENT_WAV);
-    silentAudioEl.loop   = true;
-    silentAudioEl.volume = 0.001;
-    silentAudioEl.play().catch(() => {});
+async function fetchPipedStream(videoId) {
+    for (const inst of PIPED_INSTANCES) {
+        try {
+            const r = await fetch(`${inst}/streams/${videoId}`,
+                { signal: AbortSignal.timeout(6000) });
+            if (!r.ok) continue;
+            const { audioStreams = [] } = await r.json();
+            const best = audioStreams
+                .filter(s => s.mimeType?.startsWith('audio'))
+                .sort((a, b) => b.bitrate - a.bitrate)[0];
+            if (best?.url) return best.url;
+        } catch (_) {}
+    }
+    return null;
 }
 
-function stopSilentAudio() {
-    try { silentAudioEl?.pause(); } catch (_) {}
-    silentAudioEl = null;
-}
+// Élément <audio> natif : le navigateur le lit en arrière-plan sans restriction,
+// contrairement à un iframe YouTube qui se met en pause dès que la page est cachée.
+const audioEl = new Audio();
+audioEl.preload = 'none';
 
-function stopBgKeepAlive() {
-    clearInterval(bgKeepAliveInterval);
-    bgKeepAliveInterval = null;
-}
+audioEl.addEventListener('ended', () => { clearTimeout(autoNextTimer); playNext(); });
+audioEl.addEventListener('error', () => { clearTimeout(autoNextTimer); setTimeout(playNext, 1500); });
+audioEl.addEventListener('playing', () => {
+    const dur = audioEl.duration;
+    if (dur && isFinite(dur)) currentDurMs = dur * 1000;
+    if (!timerStartedAt) resumeTimer();
+    isPlaying = true; setPlayBtn(true);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+});
+audioEl.addEventListener('pause', () => {
+    if (document.hidden && wasPlayingOnHide) { audioEl.play().catch(() => {}); return; }
+    pauseTimer();
+    isPlaying = false; setPlayBtn(false);
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -458,11 +463,9 @@ function togglePlayPause() {
     if (isPlaying) {
         sendCmd('pauseVideo'); pauseTimer();
         isPlaying = false; setPlayBtn(false);
-        if (!isInBackground) stopSilentAudio();
     } else {
         sendCmd('playVideo'); resumeTimer();
         isPlaying = true; setPlayBtn(true);
-        startSilentAudio();
     }
 }
 
@@ -728,7 +731,7 @@ function hideSearchModal() {
 function setupMediaSession() {
     if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.setActionHandler('play', () => {
-        sendCmd('playVideo'); resumeTimer(); isPlaying = true; setPlayBtn(true); startSilentAudio();
+        sendCmd('playVideo'); resumeTimer(); isPlaying = true; setPlayBtn(true);
     });
     navigator.mediaSession.setActionHandler('pause', () => {
         sendCmd('pauseVideo'); pauseTimer(); isPlaying = false; setPlayBtn(false);
@@ -752,56 +755,11 @@ function updateMediaSession(track, videoId) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
-// ── YouTube IFrame Player API ─────────────────────────────────────────────────
-let ytPlayer       = null;
-let playerReady    = false;
-let pendingVideoId = null;
+// ── Lecteur audio (Piped API) ─────────────────────────────────────────────────
+let loadVideoSeq = 0;
 
-window.onYouTubeIframeAPIReady = function() {
-    playerReady = true;
-    if (pendingVideoId) { createPlayer(pendingVideoId); pendingVideoId = null; }
-};
-
-function createPlayer(videoId) {
-    ytPlayer = new YT.Player('yt-player', {
-        height: '200',
-        width: '100%',
-        host: 'https://www.youtube-nocookie.com',
-        videoId,
-        playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
-        events: {
-            onStateChange: onPlayerStateChange,
-            onError: () => { clearTimeout(autoNextTimer); setTimeout(playNext, 1500); },
-        },
-    });
-}
-
-function onPlayerStateChange(event) {
-    if (event.data === 1) {        // PLAYING
-        const dur = ytPlayer.getDuration();
-        if (dur > 0) currentDurMs = dur * 1000;
-        if (!timerStartedAt) resumeTimer();
-        isPlaying = true; setPlayBtn(true);
-        startSilentAudio();
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-    } else if (event.data === 2) { // PAUSED
-        pauseTimer();
-        isPlaying = false; setPlayBtn(false);
-        if (!document.hidden) {
-            stopSilentAudio();
-        } else {
-            // YouTube s'est auto-mis en pause car la page est cachée → rafale de reprise
-            [0, 200, 600, 1500].forEach(ms =>
-                setTimeout(() => { if (document.hidden) sendCmd('playVideo'); }, ms)
-            );
-        }
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-    } else if (event.data === 0) { // ENDED
-        clearTimeout(autoNextTimer); playNext();
-    }
-}
-
-function loadVideo(videoId, durationSec) {
+async function loadVideo(videoId, durationSec) {
+    const seq = ++loadVideoSeq;
     clearTimeout(autoNextTimer);
     autoNextTimer  = null;
     elapsedMs      = 0;
@@ -809,20 +767,28 @@ function loadVideo(videoId, durationSec) {
     currentDurMs   = (durationSec || 0) * 1000;
 
     document.getElementById('player-placeholder').style.display = 'none';
-    isPlaying = true; setPlayBtn(true);
-    startSilentAudio();
-
-    if (ytPlayer) {
-        ytPlayer.loadVideoById(videoId);
-    } else if (playerReady) {
-        createPlayer(videoId);
-    } else {
-        pendingVideoId = videoId;
+    const coverEl = document.getElementById('cover-art');
+    if (coverEl) {
+        coverEl.src   = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+        coverEl.style.display = 'block';
     }
+    isPlaying = true; setPlayBtn(true);
+
+    const url = await fetchPipedStream(videoId);
+    if (seq !== loadVideoSeq) return;
+    if (!url) {
+        isPlaying = false; setPlayBtn(false);
+        showToast('Impossible de charger la piste. Piste suivante…');
+        setTimeout(playNext, 2000);
+        return;
+    }
+    audioEl.src = url;
+    audioEl.play().catch(() => {});
 }
 
 function sendCmd(func) {
-    try { ytPlayer?.[func]?.(); } catch (_) {}
+    if (func === 'playVideo')  audioEl.play().catch(() => {});
+    if (func === 'pauseVideo') audioEl.pause();
 }
 
 function pauseTimer() {
@@ -908,43 +874,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         showProfileScreen();
     }
 
-    // 4. Re-sync when coming back to the tab + resume si YouTube a mis en pause en arrière-plan
+    // 4. Sync multi-appareils au retour au premier plan
     document.addEventListener('visibilitychange', async () => {
         if (document.hidden) {
-            isInBackground = true;
+            isInBackground   = true;
             wasPlayingOnHide = isPlaying;
-            if (isPlaying) {
-                // YouTube détecte la page cachée et se met en pause — on contre-attaque
-                // immédiatement puis en rafale pendant les premières secondes
-                sendCmd('playVideo');
-                [200, 500, 1000, 2000, 4000, 8000].forEach(ms =>
-                    setTimeout(() => { if (document.hidden) sendCmd('playVideo'); }, ms)
-                );
-            }
-            if (wasPlayingOnHide && !bgKeepAliveInterval) {
-                bgKeepAliveInterval = setInterval(() => {
-                    if (!isInBackground) { stopBgKeepAlive(); return; }
-                    if (silentAudioEl?.paused) silentAudioEl.play().catch(() => {});
-                    if (!isPlaying) sendCmd('playVideo');
-                }, 1500);
-            }
             return;
         }
-        isInBackground = false;
-        stopBgKeepAlive();
-        if (silentAudioEl?.paused) silentAudioEl.play().catch(() => {});
-        // Retour au premier plan : reprendre si YouTube nous a mis en pause
-        if (wasPlayingOnHide) {
-            wasPlayingOnHide = false;
-            setTimeout(() => { if (!isPlaying) sendCmd('playVideo'); }, 400);
-        }
+        isInBackground   = false;
+        wasPlayingOnHide = false;
         // Sync multi-appareils : remplace par le cloud s'il est plus récent (pas de merge)
         if (pendingCloudSave) return;
         const fresh = await cloudLoad();
         if (!fresh?.profiles) return;
         const localTs = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}').lastModified || 0;
         if ((fresh.lastModified || 0) <= localTs) { setSyncStatus('synced'); return; }
-        // Le cloud est plus récent → l'utiliser directement (suppressions incluses)
         state.profiles = fresh.profiles;
         localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
         if (state.activeProfileId && !state.profiles[state.activeProfileId]) {
@@ -952,16 +896,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (state.activeProfileId) { render(); }
         setSyncStatus('synced');
     });
-
-    // Démarrer l'AudioContext dès le premier geste, avant même la lecture,
-    // pour que la session audio soit établie avant de passer en arrière-plan
-    const startAudioOnFirstGesture = () => {
-        startSilentAudio();
-        document.removeEventListener('click',      startAudioOnFirstGesture, true);
-        document.removeEventListener('touchstart', startAudioOnFirstGesture, true);
-    };
-    document.addEventListener('click',      startAudioOnFirstGesture, { capture: true, passive: true });
-    document.addEventListener('touchstart', startAudioOnFirstGesture, { capture: true, passive: true });
 
     // ── Buttons ──
     document.getElementById('btn-add-profile').addEventListener('click', () => {
