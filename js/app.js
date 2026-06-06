@@ -188,8 +188,7 @@ async function fetchAudioStream(videoId) {
             // Préférer AAC/MP4 (meilleure compat Android), sinon plus haut bitrate
             const best  = audio.find(s => s.container === 'm4a' || s.container === 'mp4')
                        || audio.sort((a, b) => parseInt(b.bitrate) - parseInt(a.bitrate))[0];
-            // Rejeter les URLs googlevideo.com : elles sont verrouillées sur l'IP du serveur Invidious
-            if (best?.url && !best.url.includes('googlevideo.com')) return best.url;
+            if (best?.url) return best.url;
         } catch (_) {}
     }
     return null;
