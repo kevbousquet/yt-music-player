@@ -159,39 +159,41 @@ let elapsedMs      = 0;    // ms déjà jouées avant la dernière pause
 let currentDurMs   = 0;    // durée totale en ms
 
 // ── Background audio keepalive ─────────────────────────────────────────────
-let silentAudioCtx = null;
-let silentAudioSrc = null;
-let silentAudioEl  = null;
+let silentAudioEl    = null;
 let wasPlayingOnHide = false;
-let isInBackground = false;
+let isInBackground   = false;
 let bgKeepAliveInterval = null;
 
+// WAV silencieux généré à l'exécution : 100 ms à 8 kHz, 8-bit, mono.
+// Un <audio loop> sur ce fichier maintient la session audio Android sans
+// dépendre de l'AudioContext (qui se suspend en arrière-plan sur Chrome).
+const SILENT_WAV = (() => {
+    const N = 800;
+    const buf = new Uint8Array(44 + N);
+    const d = new DataView(buf.buffer);
+    const ws = (o, s) => s.split('').forEach((c, i) => (buf[o + i] = c.charCodeAt(0)));
+    ws(0, 'RIFF'); d.setUint32(4, 36 + N, true);
+    ws(8, 'WAVE'); ws(12, 'fmt '); d.setUint32(16, 16, true);
+    d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+    d.setUint32(24, 8000, true); d.setUint32(28, 8000, true);
+    d.setUint16(32, 1, true); d.setUint16(34, 8, true);
+    ws(36, 'data'); d.setUint32(40, N, true);
+    buf.fill(128, 44);
+    let b = ''; buf.forEach(v => (b += String.fromCharCode(v)));
+    return 'data:audio/wav;base64,' + btoa(b);
+})();
+
 function startSilentAudio() {
-    if (silentAudioCtx) return;
-    try {
-        silentAudioCtx = new AudioContext();
-        const osc  = silentAudioCtx.createOscillator();
-        const gain = silentAudioCtx.createGain();
-        const dest = silentAudioCtx.createMediaStreamDestination();
-        osc.frequency.value = 10;   // 10 Hz : infra-son inaudible
-        gain.gain.value     = 0.001;
-        osc.connect(gain);
-        gain.connect(dest);
-        osc.start();
-        silentAudioSrc = osc;
-        // Lire le stream via un élément <audio> : Chrome traite les éléments
-        // <audio> comme des sessions média réelles et ne les suspend pas en arrière-plan
-        silentAudioEl = new Audio();
-        silentAudioEl.srcObject = dest.stream;
-        silentAudioEl.play().catch(() => {});
-    } catch (_) {}
+    if (silentAudioEl) return;
+    silentAudioEl        = new Audio(SILENT_WAV);
+    silentAudioEl.loop   = true;
+    silentAudioEl.volume = 0.001;
+    silentAudioEl.play().catch(() => {});
 }
 
 function stopSilentAudio() {
-    try { silentAudioSrc?.stop(); silentAudioCtx?.close(); silentAudioEl?.pause(); } catch (_) {}
-    silentAudioSrc = null;
-    silentAudioCtx = null;
-    silentAudioEl  = null;
+    try { silentAudioEl?.pause(); } catch (_) {}
+    silentAudioEl = null;
 }
 
 function stopBgKeepAlive() {
@@ -909,8 +911,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (wasPlayingOnHide && !bgKeepAliveInterval) {
                 bgKeepAliveInterval = setInterval(() => {
                     if (!isInBackground) { stopBgKeepAlive(); return; }
-                    // Réveiller l'AudioContext si Chrome l'a suspendu
-                    if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
+                    if (silentAudioEl?.paused) silentAudioEl.play().catch(() => {});
                     if (!isPlaying) sendCmd('playVideo');
                 }, 1500);
             }
@@ -918,8 +919,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         isInBackground = false;
         stopBgKeepAlive();
-        // Réactiver le contexte audio si le navigateur l'a suspendu
-        if (silentAudioCtx?.state === 'suspended') silentAudioCtx.resume().catch(() => {});
+        if (silentAudioEl?.paused) silentAudioEl.play().catch(() => {});
         // Retour au premier plan : reprendre si YouTube nous a mis en pause
         if (wasPlayingOnHide) {
             wasPlayingOnHide = false;
