@@ -162,23 +162,30 @@ let currentDurMs   = 0;    // durée totale en ms
 let wasPlayingOnHide = false;
 let isInBackground   = false;
 
-// ── Piped API : stream audio direct (sans pub, lecture arrière-plan native) ───
-const PIPED_INSTANCES = [
-    'https://pipedapi.kavin.rocks',
-    'https://api.piped.projectsegfau.lt',
-    'https://piped-api.garudalinux.org',
+// ── Invidious API : stream audio direct (sans pub, lecture arrière-plan native) ─
+const INVIDIOUS_INSTANCES = [
+    'https://iv.melmac.space',
+    'https://yewtu.be',
+    'https://invidious.io.lol',
+    'https://inv.nadeko.net',
 ];
 
-async function fetchPipedStream(videoId) {
-    for (const inst of PIPED_INSTANCES) {
+async function fetchAudioStream(videoId) {
+    for (const inst of INVIDIOUS_INSTANCES) {
         try {
-            const r = await fetch(`${inst}/streams/${videoId}`,
-                { signal: AbortSignal.timeout(6000) });
+            const ctrl = new AbortController();
+            const tid  = setTimeout(() => ctrl.abort(), 7000);
+            const r = await fetch(
+                `${inst}/api/v1/videos/${videoId}?fields=adaptiveFormats`,
+                { signal: ctrl.signal }
+            );
+            clearTimeout(tid);
             if (!r.ok) continue;
-            const { audioStreams = [] } = await r.json();
-            const best = audioStreams
-                .filter(s => s.mimeType?.startsWith('audio'))
-                .sort((a, b) => b.bitrate - a.bitrate)[0];
+            const { adaptiveFormats = [] } = await r.json();
+            // Préférer m4a (meilleure compat Android), sinon opus/webm
+            const audio = adaptiveFormats.filter(s => s.type?.startsWith('audio') && s.url);
+            const best  = audio.find(s => s.container === 'm4a')
+                       || audio.sort((a, b) => parseInt(b.bitrate) - parseInt(a.bitrate))[0];
             if (best?.url) return best.url;
         } catch (_) {}
     }
@@ -755,8 +762,9 @@ function updateMediaSession(track, videoId) {
     navigator.mediaSession.playbackState = 'playing';
 }
 
-// ── Lecteur audio (Piped API) ─────────────────────────────────────────────────
-let loadVideoSeq = 0;
+// ── Lecteur audio (Invidious API) ─────────────────────────────────────────────
+let loadVideoSeq        = 0;
+let consecutiveFailures = 0;
 
 async function loadVideo(videoId, durationSec) {
     const seq = ++loadVideoSeq;
@@ -774,14 +782,21 @@ async function loadVideo(videoId, durationSec) {
     }
     isPlaying = true; setPlayBtn(true);
 
-    const url = await fetchPipedStream(videoId);
+    const url = await fetchAudioStream(videoId);
     if (seq !== loadVideoSeq) return;
     if (!url) {
+        consecutiveFailures++;
         isPlaying = false; setPlayBtn(false);
-        showToast('Impossible de charger la piste. Piste suivante…');
-        setTimeout(playNext, 2000);
+        if (consecutiveFailures >= 3) {
+            consecutiveFailures = 0;
+            showToast('Service audio indisponible. Vérifiez votre connexion.');
+            return; // stop — ne pas boucler indéfiniment
+        }
+        showToast('Piste introuvable, passage à la suivante…');
+        setTimeout(playNext, 1500);
         return;
     }
+    consecutiveFailures = 0;
     audioEl.src = url;
     audioEl.play().catch(() => {});
 }
