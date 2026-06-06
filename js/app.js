@@ -165,9 +165,11 @@ let isInBackground   = false;
 // ── Invidious API : stream audio direct (sans pub, lecture arrière-plan native) ─
 const INVIDIOUS_INSTANCES = [
     'https://iv.melmac.space',
-    'https://yewtu.be',
     'https://invidious.io.lol',
     'https://inv.nadeko.net',
+    'https://yewtu.be',
+    'https://invidious.fdn.fr',
+    'https://invidious.privacyredirect.com',
 ];
 
 async function fetchAudioStream(videoId) {
@@ -182,11 +184,12 @@ async function fetchAudioStream(videoId) {
             clearTimeout(tid);
             if (!r.ok) continue;
             const { adaptiveFormats = [] } = await r.json();
-            // Préférer m4a (meilleure compat Android), sinon opus/webm
             const audio = adaptiveFormats.filter(s => s.type?.startsWith('audio') && s.url);
-            const best  = audio.find(s => s.container === 'm4a')
+            // Préférer AAC/MP4 (meilleure compat Android), sinon plus haut bitrate
+            const best  = audio.find(s => s.container === 'm4a' || s.container === 'mp4')
                        || audio.sort((a, b) => parseInt(b.bitrate) - parseInt(a.bitrate))[0];
-            if (best?.url) return best.url;
+            // Rejeter les URLs googlevideo.com : elles sont verrouillées sur l'IP du serveur Invidious
+            if (best?.url && !best.url.includes('googlevideo.com')) return best.url;
         } catch (_) {}
     }
     return null;
@@ -201,15 +204,17 @@ audioEl.addEventListener('ended', () => { clearTimeout(autoNextTimer); playNext(
 audioEl.addEventListener('error', () => {
     clearTimeout(autoNextTimer);
     consecutiveFailures++;
-    if (consecutiveFailures >= 3) {
+    const plLen = activePL()?.tracks.length || 3;
+    if (consecutiveFailures >= plLen) {
         consecutiveFailures = 0;
-        showToast('Erreur audio répétée. Service indisponible.');
+        showToast('Aucune piste disponible. Service audio indisponible.');
         isPlaying = false; setPlayBtn(false);
         return;
     }
-    setTimeout(playNext, 1500);
+    setTimeout(playNext, 500);
 });
 audioEl.addEventListener('playing', () => {
+    consecutiveFailures = 0; // reset uniquement quand la piste lit vraiment
     const dur = audioEl.duration;
     if (dur && isFinite(dur)) currentDurMs = dur * 1000;
     if (!timerStartedAt) resumeTimer();
@@ -797,16 +802,15 @@ async function loadVideo(videoId, durationSec) {
     if (!url) {
         consecutiveFailures++;
         isPlaying = false; setPlayBtn(false);
-        if (consecutiveFailures >= 3) {
+        const plLen = activePL()?.tracks.length || 3;
+        if (consecutiveFailures >= plLen) {
             consecutiveFailures = 0;
             showToast('Service audio indisponible. Vérifiez votre connexion.');
-            return; // stop — ne pas boucler indéfiniment
+            return;
         }
-        showToast('Piste introuvable, passage à la suivante…');
-        setTimeout(playNext, 1500);
+        setTimeout(playNext, 500);
         return;
     }
-    consecutiveFailures = 0;
     audioEl.src = url;
     audioEl.play().catch(() => {});
 }
