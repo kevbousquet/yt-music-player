@@ -1422,17 +1422,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ── Filtre de pistes ──
-    document.getElementById('track-filter').addEventListener('input', e => {
-        trackFilter = e.target.value;
+    function applyTrackFilter() {
+        const fi = document.getElementById('track-filter');
+        trackFilter = fi ? fi.value : '';
         document.getElementById('track-filter-clear').style.display = trackFilter ? 'block' : 'none';
         renderTracks();
-    });
+    }
+    const trackFilterEl = document.getElementById('track-filter');
+    trackFilterEl.addEventListener('input', applyTrackFilter);
+    trackFilterEl.addEventListener('keyup', applyTrackFilter);
+    trackFilterEl.addEventListener('compositionend', applyTrackFilter);
     document.getElementById('track-filter-clear').addEventListener('click', () => {
         trackFilter = '';
-        document.getElementById('track-filter').value = '';
+        trackFilterEl.value = '';
         document.getElementById('track-filter-clear').style.display = 'none';
         renderTracks();
-        document.getElementById('track-filter').focus();
+        trackFilterEl.focus();
     });
 
     document.getElementById('btn-new-playlist').addEventListener('click', () => {
