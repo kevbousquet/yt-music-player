@@ -1,14 +1,14 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-    --bg:         #0d0d12;
-    --sidebar:    #13131a;
-    --surface:    #1b1b25;
-    --border:     #27273a;
-    --accent:     #7c6af7;
-    --accent-dim: #2e2860;
-    --text:       #e6e6f0;
-    --dim:        #7777a0;
+    --bg:         #000000;
+    --sidebar:    #111111;
+    --surface:    #1a1a1a;
+    --border:     #2a2a2a;
+    --accent:     #00f5ff;
+    --accent-dim: #001e24;
+    --text:       #ffffff;
+    --dim:        #888888;
     --danger:     #e94560;
     --r:          8px;
 }
@@ -61,7 +61,7 @@ body {
 .btn-install {
     background: var(--accent);
     border: none;
-    color: #fff;
+    color: #000;
     font-size: 12px;
     font-weight: 600;
     padding: 6px 14px;
@@ -69,7 +69,7 @@ body {
     cursor: pointer;
     transition: background .15s;
 }
-.btn-install:hover { background: #6a58e0; }
+.btn-install:hover { background: #00d4e8; }
 
 .btn-install-close {
     background: none;
@@ -85,7 +85,7 @@ body {
 /* ── Profile screen ── */
 .profile-screen {
     position: fixed; inset: 0; z-index: 100;
-    background: #0a0a10;
+    background: #000;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -534,7 +534,7 @@ body {
     transition: background .15s, border-color .15s, color .15s;
     line-height: 1;
 }
-.btn-add-result:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-add-result:hover { background: var(--accent); border-color: var(--accent); color: #000; }
 .btn-add-result.added { background: #4ade80; border-color: #4ade80; color: #fff; font-size: 14px; }
 
 .search-loading { animation: pulse 1s infinite; }
@@ -596,7 +596,7 @@ body {
     width: 100%;
     background: var(--accent);
     border: none;
-    color: #fff;
+    color: #000;
     font-size: 13px;
     font-weight: 600;
     padding: 10px;
@@ -604,8 +604,8 @@ body {
     cursor: pointer;
     transition: background .15s;
 }
-.btn-primary:hover  { background: #6a58e0; }
-.btn-primary:active { background: #5947cc; }
+.btn-primary:hover  { background: #00d4e8; }
+.btn-primary:active { background: #00b8cc; }
 
 /* ── Main player ── */
 .main {
@@ -698,10 +698,10 @@ body {
     font-size: 22px;
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: #000;
 }
-.ctrl-main:hover { background: #6a58e0; border-color: #6a58e0; color: #fff; }
-.ctrl-main:active { background: #5947cc; }
+.ctrl-main:hover { background: #00d4e8; border-color: #00d4e8; color: #000; }
+.ctrl-main:active { background: #00b8cc; }
 
 /* ── Hint ── */
 .shortcuts-hint {

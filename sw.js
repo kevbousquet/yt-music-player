@@ -1,4 +1,4 @@
-const CACHE = 'ytplayer-v22';  // Incrémenté pour forcer la mise à jour
+const CACHE = 'ytplayer-v23';  // Incrémenté pour forcer la mise à jour
 const ASSETS = [
     '/yt-music-player/',
     '/yt-music-player/index.html',
