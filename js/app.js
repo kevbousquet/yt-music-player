@@ -531,11 +531,17 @@ function selectProfile(id) {
     localStorage.setItem(PROFILE_KEY, id);
     hideProfileScreen();
     render();
-    // Web Share Target : ajouter la piste partagée dès qu'un profil est actif
+    // Web Share Target
     if (window._pendingShareUrl) {
         const vid = extractVideoId(window._pendingShareUrl);
         if (vid) { addTrack(window._pendingShareUrl, ''); showToast('✓ Piste ajoutée via partage !'); }
         window._pendingShareUrl = null;
+    }
+    // Bookmarklet ?add=VIDEO_ID
+    if (window._pendingAddVid) {
+        addTrack(`https://www.youtube.com/watch?v=${window._pendingAddVid}`, '');
+        showToast('✓ Piste ajoutée !');
+        window._pendingAddVid = null;
     }
 }
 
@@ -1155,12 +1161,14 @@ function resumeTimer() {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // ── Web Share Target : capturer l'URL partagée avant le chargement ──
+    // ── Web Share Target & bookmarklet : capturer les params entrants ──
     const _sp = new URLSearchParams(location.search);
     const _sharedUrl = _sp.get('share_url') || _sp.get('share_text');
-    if (_sharedUrl) {
+    const _addVid    = _sp.get('add');
+    if (_sharedUrl || _addVid) {
         history.replaceState(null, '', location.pathname + (location.hash || ''));
-        window._pendingShareUrl = _sharedUrl;
+        if (_sharedUrl) window._pendingShareUrl = _sharedUrl;
+        if (_addVid)    window._pendingAddVid   = _addVid;
     }
 
     // Token : URL #sync=TOKEN > localStorage > défaut injecté par CI
@@ -1334,6 +1342,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const input = document.getElementById('sync-setup-url');
         input.select(); navigator.clipboard?.writeText(input.value);
         showToast('✓ Lien copié ! Mets-le en favori sur chaque appareil.');
+    });
+
+    // ── Bookmarklet : générer et copier ──
+    const _bBase = `${location.origin}${location.pathname}`;
+    const _bCode = `javascript:(function(){var m=location.href.match(/[?&]v=([a-zA-Z0-9_-]{11})|youtu\\.be\\/([a-zA-Z0-9_-]{11})|shorts\\/([a-zA-Z0-9_-]{11})/),id=m&&(m[1]||m[2]||m[3]);id?location.href='${_bBase}?add='+id:alert('Pas de vid\\u00e9o YouTube.');})();`;
+    const _bInput = document.getElementById('bookmarklet-input');
+    if (_bInput) _bInput.value = _bCode;
+    document.getElementById('btn-copy-bookmarklet')?.addEventListener('click', () => {
+        navigator.clipboard?.writeText(_bCode).then(() => showToast('✓ Bookmarklet copié !'));
     });
     document.getElementById('btn-close-sync-modal').addEventListener('click', () => {
         document.getElementById('sync-setup-modal').style.display = 'none';

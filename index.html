@@ -33,7 +33,7 @@
 
     <!-- ── Modal sync setup ── -->
     <div class="search-modal" id="sync-setup-modal">
-        <div class="search-modal-box" style="max-height:480px">
+        <div class="search-modal-box" style="max-height:580px">
             <div class="search-modal-header">
                 <span class="search-modal-title">&#9881; Synchronisation</span>
                 <button class="btn-icon" id="btn-close-sync-modal">&#xD7;</button>
@@ -68,6 +68,21 @@
                 <div style="display:flex;gap:8px">
                     <input id="worker-url-input" class="inp" type="url" placeholder="https://ytaudio.xxx.workers.dev" style="font-size:12px" autocomplete="off">
                     <button class="btn-primary" id="btn-save-worker-url" style="width:auto;padding:0 14px;white-space:nowrap">Enregistrer</button>
+                </div>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+
+            <!-- Favoris Brave / Firefox -->
+            <div style="padding:8px 16px 12px">
+                <p style="font-size:13px;font-weight:600;margin-bottom:6px">&#128278; Favori Brave / Firefox</p>
+                <p style="font-size:12px;color:var(--dim);margin-bottom:8px;line-height:1.5">
+                    Sur une vidéo YouTube dans Brave, tape le nom de ce favori dans la barre d'adresse → la piste s'ajoute instantanément.<br>
+                    <strong>Mobile :</strong> Marque-pages → Modifier le favori → remplace l'URL par ce code.
+                </p>
+                <div style="display:flex;gap:8px">
+                    <input id="bookmarklet-input" class="inp" readonly style="font-size:11px" placeholder="génération…">
+                    <button class="btn-primary" id="btn-copy-bookmarklet" style="width:auto;padding:0 14px;white-space:nowrap">Copier</button>
                 </div>
             </div>
 
