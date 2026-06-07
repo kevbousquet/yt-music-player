@@ -717,3 +717,103 @@ kbd {
     font-size: 11px;
     font-family: inherit;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE — ≤ 640 px
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+    /* ── Layout principal : colonne ── */
+    body { overflow: auto; height: auto; }
+
+    .app {
+        flex-direction: column;
+        height: auto;
+        min-height: 100dvh;
+    }
+
+    .sidebar {
+        width: 100%;
+        min-width: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        overflow: visible;
+        flex-shrink: 0;
+    }
+
+    /* Liste de playlists plus courte */
+    .playlist-tabs { max-height: 80px; }
+
+    /* Tracks : hauteur fixe pour ne pas pousser le player trop bas */
+    .tracks-section { flex: none; overflow: visible; }
+    .track-list     { max-height: 190px; }
+
+    .main       { flex-shrink: 0; }
+    .player-wrap { padding: 18px 14px; gap: 14px; }
+    .shortcuts-hint { display: none; }
+
+    /* Bannière installation : texte multiligne ok */
+    .install-banner { white-space: normal; max-width: calc(100vw - 32px); }
+
+    /* ── Modale de recherche → bottom sheet ── */
+    .search-modal {
+        padding: 0;
+        align-items: flex-end;
+    }
+
+    .search-modal-box {
+        max-width: 100%;
+        max-height: 85dvh;       /* dvh se recalcule quand le clavier s'ouvre */
+        border-radius: 16px 16px 0 0;
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
+    }
+
+    /* Poignée visuelle en haut du bottom sheet */
+    .search-modal-box::before {
+        content: '';
+        display: block;
+        width: 36px;
+        height: 4px;
+        background: var(--dim);
+        opacity: 0.35;
+        border-radius: 2px;
+        margin: 8px auto 0;
+        flex-shrink: 0;
+    }
+
+    .search-modal-header { padding: 10px 14px 0; }
+
+    /* font-size ≥ 16 px → pas de zoom automatique sur iOS */
+    .inp, .search-inp { font-size: 16px; }
+    .search-inp { margin: 10px 14px; }
+
+    /* Résultats de recherche plus compacts */
+    .result-thumb {
+        width: 54px;
+        height: 54px;
+        object-fit: cover;
+    }
+
+    .search-result { gap: 10px; padding: 8px 12px; }
+
+    /* Titre sur 2 lignes au lieu d'une seule avec ellipsis */
+    .result-title {
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: unset;
+        line-height: 1.35;
+    }
+
+    /* Bouton + : zone tactile 44 × 44 px (recommandé Apple / Material) */
+    .btn-add-result {
+        width: 44px;
+        height: 44px;
+        font-size: 22px;
+        flex-shrink: 0;
+    }
+}
