@@ -169,6 +169,9 @@ let bgCheckInterval      = null;
 let repeatMode      = 0; // 0=off 1=all 2=one
 let progressInterval = null;
 
+// ── Filtre playlist ───────────────────────────────────────────────────────────
+let trackFilter = '';
+
 // ── Silent-audio keepalive (maintient la session audio pour l'arrière-plan) ──
 const keepAliveEl = new Audio();
 keepAliveEl.loop  = true;
@@ -470,6 +473,15 @@ function esc(s) {
         .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function highlightMatch(title, query) {
+    if (!query) return esc(title);
+    const i = title.toLowerCase().indexOf(query.toLowerCase());
+    if (i < 0) return esc(title);
+    return esc(title.slice(0, i))
+        + '<mark>' + esc(title.slice(i, i + query.length)) + '</mark>'
+        + esc(title.slice(i + query.length));
+}
+
 function extractVideoId(url) {
     for (const re of [
         /[?&]v=([a-zA-Z0-9_-]{11})/,
@@ -606,6 +618,11 @@ function switchPlaylist(id) {
     const p = activeProfile(); if (!p || id === p.activePlaylistId) return;
     p.activePlaylistId = id;
     state.trackIndex   = -1; state.shuffleOrder = []; state.shufflePos = -1;
+    trackFilter = '';
+    const fi = document.getElementById('track-filter');
+    if (fi) { fi.value = ''; }
+    const fc = document.getElementById('track-filter-clear');
+    if (fc) fc.style.display = 'none';
     save(); render();
 }
 
@@ -808,12 +825,23 @@ function renderTracks() {
     const el = document.getElementById('track-list');
     if (!pl?.tracks.length) { el.innerHTML = '<p class="empty">Aucune piste — collez un lien YouTube ci-dessous.</p>'; return; }
     el.dataset.playing = isPlaying ? '1' : '0';
-    el.innerHTML = pl.tracks.map((t, i) => `
-        <div class="track-item ${i === state.trackIndex ? 'active' : ''}" data-idx="${i}" draggable="true">
+
+    const query = trackFilter.trim().toLowerCase();
+    const visible = pl.tracks
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => !query || t.title.toLowerCase().includes(query));
+
+    if (!visible.length) {
+        el.innerHTML = `<p class="empty">Aucune piste pour « ${esc(trackFilter.trim())} »</p>`;
+        return;
+    }
+
+    el.innerHTML = visible.map(({ t, i }) => `
+        <div class="track-item ${i === state.trackIndex ? 'active' : ''}" data-idx="${i}" draggable="${!query}">
             <span class="t-drag" title="Glisser pour réordonner">&#8942;&#8942;</span>
             <span class="t-num">${i + 1}</span>
             <span class="t-eq"><span></span><span></span><span></span></span>
-            <span class="t-name" title="${esc(t.title)}">${esc(t.title)}</span>
+            <span class="t-name" title="${esc(t.title)}">${highlightMatch(t.title, trackFilter.trim())}</span>
             ${t.duration ? `<span class="t-dur">${formatDuration(t.duration)}</span>` : ''}
             <button class="btn-del-t" data-idx="${i}">&#xD7;</button>
         </div>`).join('');
@@ -1391,6 +1419,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('search-input').addEventListener('keydown', e => {
         if (e.key === 'Escape') hideSearchModal();
+    });
+
+    // ── Filtre de pistes ──
+    document.getElementById('track-filter').addEventListener('input', e => {
+        trackFilter = e.target.value;
+        document.getElementById('track-filter-clear').style.display = trackFilter ? 'block' : 'none';
+        renderTracks();
+    });
+    document.getElementById('track-filter-clear').addEventListener('click', () => {
+        trackFilter = '';
+        document.getElementById('track-filter').value = '';
+        document.getElementById('track-filter-clear').style.display = 'none';
+        renderTracks();
+        document.getElementById('track-filter').focus();
     });
 
     document.getElementById('btn-new-playlist').addEventListener('click', () => {

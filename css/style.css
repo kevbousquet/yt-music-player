@@ -568,6 +568,40 @@ body {
     background: var(--border);
 }
 
+/* ── Track filter ── */
+.track-filter-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 4px 0;
+    flex-shrink: 0;
+}
+
+.track-filter-inp {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.track-filter-clear {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0 3px;
+    flex-shrink: 0;
+    display: none;
+    transition: color .12s;
+}
+.track-filter-clear:hover { color: var(--text); }
+
+mark {
+    background: none;
+    color: var(--accent);
+    font-weight: 600;
+}
+
 /* ── Add form ── */
 .add-form {
     padding: 12px 16px;
