@@ -718,6 +718,121 @@ kbd {
     font-family: inherit;
 }
 
+/* ── Progress bar ── */
+.progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.time-display {
+    font-size: 11px;
+    color: var(--dim);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+}
+#time-total { text-align: right; }
+
+.progress-bar {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+.progress-bar::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--accent) var(--fill, 0%), var(--border) var(--fill, 0%));
+}
+.progress-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+.progress-bar::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+}
+.progress-bar::-moz-range-progress {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+.progress-bar::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+/* ── Duration in track list ── */
+.t-dur {
+    font-size: 11px;
+    color: var(--dim);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+    text-align: right;
+}
+
+/* ── Equalizer animation ── */
+.t-eq {
+    display: none;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+    width: 12px;
+    flex-shrink: 0;
+}
+.track-item.active .t-eq { display: flex; }
+.t-eq span {
+    display: block;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 1px;
+    transform-origin: bottom;
+    animation: eq-bar .7s ease-in-out infinite alternate;
+}
+.t-eq span:nth-child(1) { height: 10px; animation-delay: 0s; }
+.t-eq span:nth-child(2) { height: 14px; animation-delay: .15s; }
+.t-eq span:nth-child(3) { height: 7px;  animation-delay: .3s; }
+@keyframes eq-bar {
+    from { transform: scaleY(.25); }
+    to   { transform: scaleY(1); }
+}
+.track-list[data-playing="0"] .t-eq span,
+.track-list:not([data-playing]) .t-eq span { animation-play-state: paused; }
+
+/* ── Drag & drop handle ── */
+.t-drag {
+    color: var(--dim);
+    cursor: grab;
+    font-size: 13px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity .12s;
+    user-select: none;
+    letter-spacing: -1px;
+    padding: 0 1px;
+}
+.track-item:hover .t-drag { opacity: .6; }
+.t-drag:active { cursor: grabbing; }
+.track-item.dragging { opacity: .35; }
+.track-item.drag-over { background: var(--accent-dim) !important; border-color: var(--accent) !important; }
+
+/* Bottom sheet swipe transition */
+.search-modal-box { transition: transform .2s cubic-bezier(.4, 0, .2, 1); }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MOBILE — ≤ 640 px
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -754,6 +869,14 @@ kbd {
 
     /* Bannière installation : texte multiligne ok */
     .install-banner { white-space: normal; max-width: calc(100vw - 32px); }
+
+    /* Drag handle masqué sur mobile (pas de drag & drop natif) */
+    .t-drag { display: none; }
+
+    /* Barre de progression plus épaisse = meilleure prise tactile */
+    .progress-bar { height: 6px; }
+    .progress-bar::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -6px; }
+    .progress-bar::-moz-range-thumb { width: 18px; height: 18px; }
 
     /* ── Modale de recherche → bottom sheet ── */
     .search-modal {

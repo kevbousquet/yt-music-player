@@ -165,6 +165,10 @@ let wasPlayingOnHide     = false;
 let isInBackground       = false;
 let bgCheckInterval      = null;
 
+// ── Repeat & progress ─────────────────────────────────────────────────────────
+let repeatMode      = 0; // 0=off 1=all 2=one
+let progressInterval = null;
+
 // ── Silent-audio keepalive (maintient la session audio pour l'arrière-plan) ──
 const keepAliveEl = new Audio();
 keepAliveEl.loop  = true;
@@ -197,6 +201,144 @@ function stopKeepAlive() {
     keepAliveEl.pause();
 }
 
+// ── Progress bar ──────────────────────────────────────────────────────────────
+function getPlaybackPosition() {
+    if (useNativeAudio) {
+        return {
+            current: isFinite(audioEl.currentTime) ? audioEl.currentTime : 0,
+            total:   isFinite(audioEl.duration)    ? audioEl.duration    : (currentDurMs / 1000),
+        };
+    }
+    if (ytPlayerReady && ytPlayer) {
+        try {
+            return {
+                current: ytPlayer.getCurrentTime?.() || 0,
+                total:   ytPlayer.getDuration?.()    || (currentDurMs / 1000) || 0,
+            };
+        } catch (_) {}
+    }
+    const elMs = elapsedMs + (timerStartedAt ? Date.now() - timerStartedAt : 0);
+    return { current: elMs / 1000, total: currentDurMs / 1000 };
+}
+
+function updateProgressBar() {
+    const bar   = document.getElementById('progress-bar');
+    const elEl  = document.getElementById('time-elapsed');
+    const totEl = document.getElementById('time-total');
+    if (!bar) return;
+    const { current, total } = getPlaybackPosition();
+    const pct = total > 0 ? Math.min(current / total, 1) : 0;
+    bar.value = Math.round(pct * 1000);
+    bar.style.setProperty('--fill', `${pct * 100}%`);
+    if (elEl)  elEl.textContent  = formatDuration(Math.floor(current));
+    if (totEl) totEl.textContent = total > 0 ? formatDuration(Math.floor(total)) : '–';
+}
+
+function startProgressLoop() {
+    if (progressInterval) return;
+    progressInterval = setInterval(updateProgressBar, 250);
+    updateProgressBar();
+}
+
+function stopProgressLoop() {
+    clearInterval(progressInterval);
+    progressInterval = null;
+    updateProgressBar();
+}
+
+function seekTo(sec) {
+    if (useNativeAudio) {
+        audioEl.currentTime = sec;
+    } else if (ytPlayerReady && ytPlayer) {
+        try { ytPlayer.seekTo(sec, true); } catch (_) {}
+    }
+    elapsedMs = sec * 1000;
+    if (timerStartedAt) {
+        clearTimeout(autoNextTimer);
+        timerStartedAt = Date.now();
+        if (currentDurMs) {
+            const remaining = currentDurMs - elapsedMs + 3000;
+            if (remaining > 2000)
+                autoNextTimer = setTimeout(() => { autoNextTimer = null; playNext(); }, remaining);
+        }
+    }
+    updateProgressBar();
+}
+
+// ── Repeat mode ───────────────────────────────────────────────────────────────
+function toggleRepeat() {
+    repeatMode = (repeatMode + 1) % 3;
+    const btn = document.getElementById('btn-repeat');
+    if (!btn) return;
+    btn.classList.toggle('active', repeatMode > 0);
+    btn.dataset.mode = repeatMode;
+    btn.title    = ['Répétition désactivée', 'Tout répéter', 'Répéter la piste'][repeatMode];
+    btn.innerHTML = repeatMode === 2
+        ? '&#8634;<span style="font-size:8px;vertical-align:super;font-weight:700">1</span>'
+        : '&#8635;';
+}
+
+// ── Bottom-sheet swipe to dismiss ─────────────────────────────────────────────
+function initBottomSheetSwipe(boxEl, hideFunc) {
+    let startY = 0, isDragging = false;
+    boxEl.addEventListener('touchstart', e => {
+        startY = e.touches[0].clientY;
+        isDragging = false;
+        boxEl.style.transition = 'transform 0s';
+    }, { passive: true });
+    boxEl.addEventListener('touchmove', e => {
+        const dy = e.touches[0].clientY - startY;
+        const scrollEl = boxEl.querySelector('.search-results');
+        if (dy > 8 && (!scrollEl || scrollEl.scrollTop <= 0)) {
+            isDragging = true;
+            boxEl.style.transform = `translateY(${Math.min(dy, 220)}px)`;
+        }
+    }, { passive: true });
+    boxEl.addEventListener('touchend', e => {
+        boxEl.style.transition = '';
+        const dy = e.changedTouches[0].clientY - startY;
+        if (dy > 80 && isDragging) {
+            boxEl.style.transform = '';
+            hideFunc();
+        } else {
+            boxEl.style.transform = '';
+        }
+        isDragging = false;
+    }, { passive: true });
+}
+
+// ── Import playlist YouTube ───────────────────────────────────────────────────
+async function importPlaylist(listId) {
+    if (!ytApiKey) { showToast('Clé API YouTube requise.'); return; }
+    const pl = activePL(); if (!pl) return;
+    showToast('Importation…');
+    let pageToken = '', count = 0;
+    const existing = new Set(pl.tracks.map(t => t.videoId));
+    try {
+        do {
+            const r = await fetch(
+                `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${listId}${pageToken ? '&pageToken=' + pageToken : ''}&key=${ytApiKey}`,
+                { signal: AbortSignal.timeout(10000) }
+            );
+            if (!r.ok) throw new Error();
+            const data = await r.json();
+            for (const item of data.items || []) {
+                const vid   = item.snippet?.resourceId?.videoId;
+                const title = item.snippet?.title;
+                if (!vid || !title || title === 'Private video' || title === 'Deleted video') continue;
+                if (existing.has(vid)) continue;
+                existing.add(vid);
+                pl.tracks.push({ id: uid(), videoId: vid, title, duration: 0 });
+                count++;
+            }
+            pageToken = data.nextPageToken || '';
+        } while (pageToken);
+        if (state.isShuffled) resetShuffle(pl.tracks.length);
+        save(); renderTracks();
+        showToast(`✓ ${count} piste${count > 1 ? 's' : ''} importée${count > 1 ? 's' : ''} !`);
+    } catch (_) { showToast('Erreur lors de l\'importation.'); }
+}
+
 // ── Worker-based audio streaming (arrière-plan natif) ────────────────────────
 let workerUrl      = null;
 let useNativeAudio = false;
@@ -217,9 +359,10 @@ async function fetchAudioStream(videoId) {
 const audioEl = new Audio();
 audioEl.preload = 'none';
 
-audioEl.addEventListener('ended',  () => { clearTimeout(autoNextTimer); playNext(); });
+audioEl.addEventListener('ended',  () => { clearTimeout(autoNextTimer); stopProgressLoop(); playNext(); });
 audioEl.addEventListener('error',  () => {
     clearTimeout(autoNextTimer);
+    stopProgressLoop();
     consecutiveFailures++;
     const plLen = activePL()?.tracks.length || 3;
     if (consecutiveFailures >= plLen) {
@@ -236,10 +379,12 @@ audioEl.addEventListener('playing', () => {
     if (dur && isFinite(dur)) currentDurMs = dur * 1000;
     if (!timerStartedAt) resumeTimer();
     isPlaying = true; setPlayBtn(true);
+    startProgressLoop();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 });
 audioEl.addEventListener('pause', () => {
     if (document.hidden && wasPlayingOnHide) { audioEl.play().catch(() => {}); return; }
+    stopProgressLoop();
     pauseTimer();
     isPlaying = false; setPlayBtn(false);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -279,6 +424,7 @@ function onYTStateChange(e) {
     if (e.data === YT.PlayerState.ENDED) {
         clearTimeout(autoNextTimer);
         stopKeepAlive();
+        stopProgressLoop();
         playNext();
     } else if (e.data === YT.PlayerState.PLAYING) {
         consecutiveFailures = 0;
@@ -286,15 +432,16 @@ function onYTStateChange(e) {
         if (dur && isFinite(dur)) currentDurMs = dur * 1000;
         if (!timerStartedAt) resumeTimer();
         isPlaying = true; setPlayBtn(true);
+        startProgressLoop();
         startKeepAlive();
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     } else if (e.data === YT.PlayerState.PAUSED) {
         if (document.hidden && wasPlayingOnHide) {
-            // YouTube detected background — resume immediately
             setTimeout(() => { if (wasPlayingOnHide) ytPlayer?.playVideo(); }, 50);
             return;
         }
         stopKeepAlive();
+        stopProgressLoop();
         pauseTimer();
         isPlaying = false; setPlayBtn(false);
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -384,6 +531,12 @@ function selectProfile(id) {
     localStorage.setItem(PROFILE_KEY, id);
     hideProfileScreen();
     render();
+    // Web Share Target : ajouter la piste partagée dès qu'un profil est actif
+    if (window._pendingShareUrl) {
+        const vid = extractVideoId(window._pendingShareUrl);
+        if (vid) { addTrack(window._pendingShareUrl, ''); showToast('✓ Piste ajoutée via partage !'); }
+        window._pendingShareUrl = null;
+    }
 }
 
 function createProfile(name) {
@@ -552,10 +705,18 @@ function playAt(realIdx) {
 
 function playNext() {
     const pl = activePL(); if (!pl?.tracks.length) return;
+
+    if (repeatMode === 2) { playAt(state.trackIndex); return; }
+
     if (state.isShuffled && state.shuffleOrder.length) {
         const n = (state.shufflePos + 1) % state.shuffleOrder.length;
+        if (n === 0 && repeatMode === 0) { stopProgressLoop(); stopKeepAlive(); isPlaying = false; setPlayBtn(false); return; }
         state.shufflePos = n; playAt(state.shuffleOrder[n]);
-    } else { playAt((state.trackIndex + 1) % pl.tracks.length); }
+    } else {
+        const next = (state.trackIndex + 1) % pl.tracks.length;
+        if (next === 0 && repeatMode === 0) { stopProgressLoop(); stopKeepAlive(); pauseTimer(); isPlaying = false; setPlayBtn(false); return; }
+        playAt(next);
+    }
 }
 
 function playPrev() {
@@ -640,14 +801,61 @@ function renderTracks() {
     const pl = activePL();
     const el = document.getElementById('track-list');
     if (!pl?.tracks.length) { el.innerHTML = '<p class="empty">Aucune piste — collez un lien YouTube ci-dessous.</p>'; return; }
+    el.dataset.playing = isPlaying ? '1' : '0';
     el.innerHTML = pl.tracks.map((t, i) => `
-        <div class="track-item ${i === state.trackIndex ? 'active' : ''}" data-idx="${i}">
+        <div class="track-item ${i === state.trackIndex ? 'active' : ''}" data-idx="${i}" draggable="true">
+            <span class="t-drag" title="Glisser pour réordonner">&#8942;&#8942;</span>
             <span class="t-num">${i + 1}</span>
+            <span class="t-eq"><span></span><span></span><span></span></span>
             <span class="t-name" title="${esc(t.title)}">${esc(t.title)}</span>
+            ${t.duration ? `<span class="t-dur">${formatDuration(t.duration)}</span>` : ''}
             <button class="btn-del-t" data-idx="${i}">&#xD7;</button>
         </div>`).join('');
-    el.querySelectorAll('.track-item').forEach(item => item.addEventListener('click', e => { if (!e.target.classList.contains('btn-del-t')) playAt(+item.dataset.idx); }));
+
+    el.querySelectorAll('.track-item').forEach(item => {
+        item.addEventListener('click', e => {
+            if (!e.target.classList.contains('btn-del-t') && !e.target.classList.contains('t-drag'))
+                playAt(+item.dataset.idx);
+        });
+    });
     el.querySelectorAll('.btn-del-t').forEach(btn => btn.addEventListener('click', () => delTrack(+btn.dataset.idx)));
+
+    // Drag & drop to reorder
+    let dragSrcIdx = null;
+    el.querySelectorAll('.track-item').forEach(item => {
+        item.addEventListener('dragstart', e => {
+            dragSrcIdx = +item.dataset.idx;
+            e.dataTransfer.effectAllowed = 'move';
+            setTimeout(() => item.classList.add('dragging'), 0);
+        });
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+            el.querySelectorAll('.drag-over').forEach(d => d.classList.remove('drag-over'));
+        });
+        item.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            el.querySelectorAll('.drag-over').forEach(d => d.classList.remove('drag-over'));
+            item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+        item.addEventListener('drop', e => {
+            e.preventDefault();
+            item.classList.remove('drag-over');
+            const dropIdx = +item.dataset.idx;
+            if (dragSrcIdx === null || dragSrcIdx === dropIdx) return;
+            const pl2 = activePL(); if (!pl2) return;
+            const [moved] = pl2.tracks.splice(dragSrcIdx, 1);
+            pl2.tracks.splice(dropIdx, 0, moved);
+            if      (state.trackIndex === dragSrcIdx)                                     state.trackIndex = dropIdx;
+            else if (dragSrcIdx < state.trackIndex && dropIdx >= state.trackIndex)        state.trackIndex--;
+            else if (dragSrcIdx > state.trackIndex && dropIdx <= state.trackIndex)        state.trackIndex++;
+            dragSrcIdx = null;
+            if (state.isShuffled) resetShuffle(pl2.tracks.length);
+            save(); renderTracks();
+        });
+    });
+
     const active = el.querySelector('.active');
     if (active) active.scrollIntoView({ block: 'nearest' });
 }
@@ -674,6 +882,8 @@ function showToast(msg) {
 
 function setPlayBtn(playing) {
     document.getElementById('btn-play-pause').innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+    const tl = document.getElementById('track-list');
+    if (tl) tl.dataset.playing = playing ? '1' : '0';
 }
 
 // ── Profile screen ────────────────────────────────────────────────────────────
@@ -881,6 +1091,8 @@ async function loadVideo(videoId, durationSec) {
     elapsedMs      = 0;
     timerStartedAt = null;
     currentDurMs   = (durationSec || 0) * 1000;
+    stopProgressLoop();
+    updateProgressBar();
 
     document.getElementById('player-placeholder').style.display = 'none';
     isPlaying = true; setPlayBtn(true);
@@ -942,6 +1154,14 @@ function resumeTimer() {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+
+    // ── Web Share Target : capturer l'URL partagée avant le chargement ──
+    const _sp = new URLSearchParams(location.search);
+    const _sharedUrl = _sp.get('share_url') || _sp.get('share_text');
+    if (_sharedUrl) {
+        history.replaceState(null, '', location.pathname + (location.hash || ''));
+        window._pendingShareUrl = _sharedUrl;
+    }
 
     // Token : URL #sync=TOKEN > localStorage > défaut injecté par CI
     if (location.hash.startsWith('#sync=')) {
@@ -1162,9 +1382,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('btn-add').addEventListener('click', () => {
-        const url   = document.getElementById('url-input').value;
+        const url   = document.getElementById('url-input').value.trim();
         const title = document.getElementById('title-input').value;
-        if (!url.trim()) { document.getElementById('url-input').focus(); return; }
+        if (!url) { document.getElementById('url-input').focus(); return; }
+        // Playlist URL (list= sans v=) → import batch
+        const listMatch = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+        if (listMatch && !extractVideoId(url)) {
+            importPlaylist(listMatch[1]);
+            document.getElementById('url-input').value = '';
+            return;
+        }
         addTrack(url, title);
         document.getElementById('url-input').value  = '';
         document.getElementById('title-input').value = '';
@@ -1188,7 +1415,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-next').addEventListener('click', playNext);
     document.getElementById('btn-prev').addEventListener('click', playPrev);
     document.getElementById('btn-shuffle').addEventListener('click', toggleShuffle);
+    document.getElementById('btn-repeat').addEventListener('click', toggleRepeat);
     document.getElementById('btn-clear').addEventListener('click', clearTracks);
+
+    // ── Progress bar seek ──
+    const progressBar = document.getElementById('progress-bar');
+    progressBar.addEventListener('input', e => {
+        const pct = e.target.value / 1000;
+        e.target.style.setProperty('--fill', `${pct * 100}%`);
+        const { total } = getPlaybackPosition();
+        const elEl = document.getElementById('time-elapsed');
+        if (elEl && total > 0) elEl.textContent = formatDuration(Math.floor(pct * total));
+    });
+    progressBar.addEventListener('change', e => {
+        const pct = e.target.value / 1000;
+        const { total } = getPlaybackPosition();
+        if (total > 0) seekTo(pct * total);
+    });
+
+    // ── Swipe bas pour fermer la modale de recherche ──
+    initBottomSheetSwipe(document.querySelector('#search-modal .search-modal-box'), hideSearchModal);
 
     document.addEventListener('keydown', e => {
         if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;

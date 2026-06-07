@@ -126,6 +126,7 @@
                     <span class="section-label">PISTES</span>
                     <div class="track-actions">
                         <button class="btn-icon" id="btn-shuffle" title="Lecture aléatoire">&#8652;</button>
+                        <button class="btn-icon" id="btn-repeat" title="Répétition désactivée" data-mode="0">&#8635;</button>
                         <button class="btn-icon danger" id="btn-clear" title="Vider la playlist">&#8998;</button>
                     </div>
                 </div>
@@ -135,7 +136,7 @@
             <div class="add-form">
                 <button class="btn-search-open" id="btn-search-open">&#128269; Rechercher sur YouTube</button>
                 <div class="add-divider"><span>ou coller un lien</span></div>
-                <input type="text" id="url-input" class="inp" placeholder="https://youtube.com/watch?v=…">
+                <input type="text" id="url-input" class="inp" placeholder="https://youtube.com/watch?v=… ou playlist?list=…">
                 <input type="text" id="title-input" class="inp" placeholder="Titre personnalisé (optionnel)">
                 <button class="btn-primary" id="btn-add">Ajouter à la playlist</button>
             </div>
@@ -157,6 +158,12 @@
                 <div class="now-playing">
                     <div class="np-title" id="track-title">–</div>
                     <div class="np-meta" id="track-meta"></div>
+                </div>
+
+                <div class="progress-wrap">
+                    <span class="time-display" id="time-elapsed">0:00</span>
+                    <input type="range" id="progress-bar" class="progress-bar" min="0" max="1000" value="0" step="1">
+                    <span class="time-display" id="time-total">–</span>
                 </div>
 
                 <div class="controls">

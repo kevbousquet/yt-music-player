@@ -15,5 +15,13 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/yt-music-player/",
+    "method": "GET",
+    "params": {
+      "url":  "share_url",
+      "text": "share_text"
+    }
+  }
 }
