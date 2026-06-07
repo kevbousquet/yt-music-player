@@ -172,6 +172,19 @@ let progressInterval = null;
 // ── Filtre playlist ───────────────────────────────────────────────────────────
 let trackFilter = '';
 
+// ── Volume ────────────────────────────────────────────────────────────────────
+let currentVolume = parseInt(localStorage.getItem('ytplayer_volume') || '80');
+let prevVolume    = currentVolume || 80;
+
+// ── Sleep timer ───────────────────────────────────────────────────────────────
+let sleepTimerEnd      = null;
+let sleepTimerInterval = null;
+let sleepTimerMins     = 0;
+const SLEEP_PRESETS    = [0, 15, 30, 60];
+
+// ── Auto-scroll flag ──────────────────────────────────────────────────────────
+let shouldScrollToActive = false;
+
 // ── Silent-audio keepalive (maintient la session audio pour l'arrière-plan) ──
 const keepAliveEl = new Audio();
 keepAliveEl.loop  = true;
@@ -202,6 +215,119 @@ function startKeepAlive() {
 
 function stopKeepAlive() {
     keepAliveEl.pause();
+}
+
+// ── Volume ────────────────────────────────────────────────────────────────────
+function applyVolume(vol) {
+    currentVolume = Math.max(0, Math.min(100, vol));
+    localStorage.setItem('ytplayer_volume', currentVolume);
+    audioEl.volume = currentVolume / 100;
+    if (ytPlayerReady && ytPlayer) {
+        try { ytPlayer.setVolume(currentVolume); } catch (_) {}
+    }
+    const bar = document.getElementById('volume-bar');
+    if (bar) { bar.value = currentVolume; bar.style.setProperty('--fill', `${currentVolume}%`); }
+    const icon = document.getElementById('vol-icon');
+    if (icon) icon.textContent = currentVolume === 0 ? '🔇' : currentVolume < 50 ? '🔉' : '🔊';
+}
+
+// ── Sleep timer ───────────────────────────────────────────────────────────────
+function setSleepTimer(minutes) {
+    clearInterval(sleepTimerInterval);
+    sleepTimerInterval = null;
+    sleepTimerEnd = null;
+    sleepTimerMins = minutes;
+    const btn = document.getElementById('btn-sleep');
+    const rem = document.getElementById('sleep-remaining');
+    if (!minutes) {
+        if (btn) { btn.classList.remove('active'); btn.title = 'Timer d\'arrêt automatique'; }
+        if (rem) rem.textContent = '';
+        return;
+    }
+    sleepTimerEnd = Date.now() + minutes * 60 * 1000;
+    if (btn) { btn.classList.add('active'); btn.title = `Arrêt dans ${minutes} min`; }
+    function tick() {
+        const remaining = sleepTimerEnd - Date.now();
+        if (remaining <= 0) {
+            clearInterval(sleepTimerInterval); sleepTimerInterval = null;
+            sleepTimerEnd = null; sleepTimerMins = 0;
+            if (btn) { btn.classList.remove('active'); btn.title = 'Timer d\'arrêt automatique'; }
+            if (rem) rem.textContent = '';
+            wasPlayingOnHide = false;
+            sendCmd('pauseVideo'); stopKeepAlive(); pauseTimer(); stopProgressLoop();
+            isPlaying = false; setPlayBtn(false);
+            showToast('🌙 Timer — lecture arrêtée');
+            return;
+        }
+        const m = Math.floor(remaining / 60000);
+        const s = Math.floor((remaining % 60000) / 1000);
+        if (rem) rem.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    }
+    tick();
+    sleepTimerInterval = setInterval(tick, 1000);
+    showToast(`🌙 Arrêt dans ${minutes} min`);
+}
+
+// ── Context menu piste ────────────────────────────────────────────────────────
+function showTrackContextMenu(idx, x, y) {
+    document.getElementById('track-ctx-menu')?.remove();
+    const pl    = activePL();
+    const track = pl?.tracks[idx];
+    if (!track) return;
+
+    const moveTargets = [];
+    for (const [profId, prof] of Object.entries(state.profiles)) {
+        for (const [plId, playlist] of Object.entries(prof.playlists)) {
+            if (plId !== activeProfile()?.activePlaylistId)
+                moveTargets.push({ profId, plId, label: profId === state.activeProfileId ? playlist.name : `${prof.name} › ${playlist.name}` });
+        }
+    }
+
+    const menu = document.createElement('div');
+    menu.id = 'track-ctx-menu';
+    menu.className = 'ctx-menu';
+    menu.innerHTML = `
+        <div class="ctx-item" data-action="rename">&#9998; Renommer</div>
+        <div class="ctx-item" data-action="copy-url">&#128279; Copier le lien</div>
+        ${moveTargets.slice(0, 5).map(t => `<div class="ctx-item" data-action="move" data-plid="${t.plId}" data-profid="${t.profId}">&#10132; ${esc(t.label)}</div>`).join('')}
+        <div class="ctx-sep"></div>
+        <div class="ctx-item ctx-item-danger" data-action="delete">&#xD7; Supprimer</div>`;
+    menu.style.cssText = `left:${x}px;top:${y}px`;
+    document.body.appendChild(menu);
+
+    requestAnimationFrame(() => {
+        const r = menu.getBoundingClientRect();
+        if (r.right  > window.innerWidth)  menu.style.left = `${Math.max(4, window.innerWidth  - r.width  - 4)}px`;
+        if (r.bottom > window.innerHeight) menu.style.top  = `${Math.max(4, window.innerHeight - r.height - 4)}px`;
+    });
+
+    menu.addEventListener('click', e => {
+        const item = e.target.closest('.ctx-item');
+        if (!item) return;
+        const action = item.dataset.action;
+        if (action === 'rename') {
+            const n = prompt('Nouveau titre :', track.title);
+            if (n?.trim()) { track.title = n.trim(); save(); renderTracks(); }
+        } else if (action === 'copy-url') {
+            navigator.clipboard?.writeText(`https://www.youtube.com/watch?v=${track.videoId}`)
+                .then(() => showToast('✓ Lien copié !'));
+        } else if (action === 'move') {
+            const tProf = state.profiles[item.dataset.profid];
+            const tPl   = tProf?.playlists[item.dataset.plid];
+            if (!tPl) return;
+            tPl.tracks.push({ ...track, id: uid() });
+            delTrack(idx);
+            save();
+            showToast(`✓ Déplacé vers "${tPl.name}"`);
+        } else if (action === 'delete') {
+            delTrack(idx);
+        }
+        menu.remove();
+    });
+
+    setTimeout(() => {
+        document.addEventListener('click', () => document.getElementById('track-ctx-menu')?.remove(), { once: true });
+    }, 0);
 }
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
@@ -361,6 +487,7 @@ async function fetchAudioStream(videoId) {
 
 const audioEl = new Audio();
 audioEl.preload = 'none';
+audioEl.volume  = currentVolume / 100;
 
 audioEl.addEventListener('ended',  () => { clearTimeout(autoNextTimer); stopProgressLoop(); playNext(); });
 audioEl.addEventListener('error',  () => {
@@ -420,6 +547,7 @@ window.onYouTubeIframeAPIReady = function () {
 
 function onYTReady() {
     ytPlayerReady = true;
+    try { ytPlayer.setVolume(currentVolume); } catch (_) {}
     if (pendingVideoId) { ytPlayer.loadVideoById(pendingVideoId); pendingVideoId = null; }
 }
 
@@ -723,6 +851,7 @@ function playAt(realIdx) {
         });
     }
     updateMediaSession(track, track.videoId);
+    shouldScrollToActive = true;
     renderNowPlaying(); renderTracks();
 }
 
@@ -890,8 +1019,26 @@ function renderTracks() {
         });
     });
 
+    // Context menu: right-click + long press
+    el.querySelectorAll('.track-item').forEach(item => {
+        let lpTimer = null;
+        item.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            showTrackContextMenu(+item.dataset.idx, e.clientX, e.clientY);
+        });
+        item.addEventListener('touchstart', e => {
+            const t = e.touches[0];
+            lpTimer = setTimeout(() => showTrackContextMenu(+item.dataset.idx, t.clientX, t.clientY), 500);
+        }, { passive: true });
+        item.addEventListener('touchmove',  () => clearTimeout(lpTimer));
+        item.addEventListener('touchend',   () => clearTimeout(lpTimer));
+    });
+
     const active = el.querySelector('.active');
-    if (active) active.scrollIntoView({ block: 'nearest' });
+    if (active && shouldScrollToActive) {
+        active.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        shouldScrollToActive = false;
+    }
 }
 
 function renderNowPlaying() {
@@ -1499,6 +1646,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Swipe bas pour fermer la modale de recherche ──
     initBottomSheetSwipe(document.querySelector('#search-modal .search-modal-box'), hideSearchModal);
+
+    // ── Volume ──
+    applyVolume(currentVolume);
+    const volumeBar = document.getElementById('volume-bar');
+    volumeBar.addEventListener('input', e => applyVolume(+e.target.value));
+    document.getElementById('vol-icon').addEventListener('click', () => {
+        if (currentVolume > 0) { prevVolume = currentVolume; applyVolume(0); }
+        else                    applyVolume(prevVolume || 80);
+    });
+
+    // ── Sleep timer ──
+    document.getElementById('btn-sleep').addEventListener('click', () => {
+        const idx  = SLEEP_PRESETS.indexOf(sleepTimerMins);
+        const next = SLEEP_PRESETS[(idx + 1) % SLEEP_PRESETS.length];
+        setSleepTimer(next);
+    });
 
     document.addEventListener('keydown', e => {
         if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;

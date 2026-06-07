@@ -191,6 +191,16 @@
                     <button class="ctrl-btn" id="btn-next" title="Suivant">&#9197;</button>
                 </div>
 
+                <div class="volume-wrap">
+                    <button class="vol-mute" id="vol-icon" title="Couper / rétablir le son">&#128266;</button>
+                    <input type="range" id="volume-bar" class="volume-bar" min="0" max="100" value="80" step="1">
+                </div>
+
+                <div class="sleep-row">
+                    <button class="btn-sleep" id="btn-sleep" title="Timer d'arrêt automatique">&#127769;</button>
+                    <span class="sleep-remaining" id="sleep-remaining"></span>
+                </div>
+
                 <div class="shortcuts-hint">
                     Raccourcis : <kbd>Espace</kbd> play/pause &nbsp;·&nbsp; <kbd>←</kbd> précédent &nbsp;·&nbsp; <kbd>→</kbd> suivant
                 </div>
