@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YT Player — Aperçu des thèmes</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0a0a10;
+    color: #e6e6f0;
+    padding: 32px 20px;
+    font-size: 14px;
+}
+
+h1 { text-align: center; font-size: 20px; color: #a0a0c0; margin-bottom: 8px; font-weight: 600; }
+.subtitle { text-align: center; font-size: 13px; color: #555577; margin-bottom: 40px; }
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* ── Carte de thème ── */
+.theme-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.theme-label {
+    font-size: 16px;
+    font-weight: 700;
+    padding: 0 4px;
+}
+
+.theme-desc {
+    font-size: 12px;
+    color: #7777a0;
+    padding: 0 4px;
+    line-height: 1.5;
+}
+
+/* ── Mini app ── */
+.app-preview {
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    height: 420px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.5);
+}
+
+.preview-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.preview-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 16px;
+    gap: 14px;
+}
+
+.p-top {
+    padding: 12px 14px 10px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+.p-top-right { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+
+.p-section { padding: 10px 14px 6px; flex-shrink: 0; }
+.p-section-label { font-size: 9px; font-weight: 700; letter-spacing: 1.2px; opacity: .5; text-transform: uppercase; margin-bottom: 5px; }
+
+.p-playlist {
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+.p-playlist.active { font-weight: 600; }
+.p-pl-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+.p-track {
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+.p-track.active { font-weight: 600; }
+.p-t-num { font-size: 10px; opacity: .4; min-width: 14px; text-align: right; flex-shrink: 0; }
+.p-t-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.p-t-dur { font-size: 10px; opacity: .4; flex-shrink: 0; }
+.p-eq { display: flex; align-items: flex-end; gap: 1px; height: 10px; width: 9px; flex-shrink: 0; }
+.p-eq span { display: block; width: 2px; background: currentColor; border-radius: 1px; }
+.p-eq span:nth-child(1) { height: 6px; }
+.p-eq span:nth-child(2) { height: 10px; }
+.p-eq span:nth-child(3) { height: 4px; }
+
+.p-tracks-section { flex: 1; overflow: hidden; padding: 0 14px; }
+.p-track-list { display: flex; flex-direction: column; gap: 1px; }
+
+.p-search-btn {
+    margin: auto 14px 12px;
+    padding: 8px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    font-size: 11px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* Cover art */
+.p-cover {
+    width: 100%;
+    aspect-ratio: 16/9;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+}
+.p-cover-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Now playing */
+.p-now { text-align: center; width: 100%; }
+.p-np-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-np-meta { font-size: 10px; opacity: .5; }
+
+/* Progress */
+.p-progress { width: 100%; display: flex; align-items: center; gap: 6px; }
+.p-time { font-size: 10px; opacity: .45; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.p-bar-wrap { flex: 1; height: 3px; border-radius: 2px; position: relative; }
+.p-bar-fill { height: 100%; border-radius: 2px; width: 38%; position: relative; }
+.p-bar-thumb { width: 10px; height: 10px; border-radius: 50%; position: absolute; right: -5px; top: 50%; transform: translateY(-50%); }
+
+/* Controls */
+.p-controls { display: flex; align-items: center; gap: 10px; }
+.p-ctrl {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border-width: 1px;
+    border-style: solid;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    cursor: pointer;
+}
+.p-ctrl.main { width: 48px; height: 48px; font-size: 18px; border: none; }
+
+/* ══════════════════════════════════════════════════
+   THÈME 1 — GLASSMORPHISM
+══════════════════════════════════════════════════ */
+.glass .app-preview {
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+}
+.glass .preview-sidebar {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255,255,255,0.1);
+}
+.glass .preview-main {
+    background: transparent;
+}
+.glass .p-top {
+    color: #e0d8ff;
+    border-bottom-color: rgba(255,255,255,0.1);
+}
+.glass .p-top-accent { color: #c084fc; }
+.glass .p-pl-dot { background: #c084fc; }
+.glass .p-playlist.active {
+    background: rgba(192,132,252,0.15);
+    color: #c084fc;
+}
+.glass .p-track.active {
+    background: rgba(192,132,252,0.12);
+    border-color: rgba(192,132,252,0.3);
+    color: #c084fc;
+}
+.glass .p-eq { color: #c084fc; }
+.glass .p-search-btn {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.6);
+}
+.glass .p-bar-wrap { background: rgba(255,255,255,0.15); }
+.glass .p-bar-fill { background: #c084fc; }
+.glass .p-bar-thumb { background: #c084fc; }
+.glass .p-ctrl {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.12);
+    color: #e0d8ff;
+}
+.glass .p-ctrl.main { background: #c084fc; color: #fff; }
+.glass .p-cover { box-shadow: 0 4px 24px rgba(192,132,252,0.3); }
+.glass .theme-label { color: #c084fc; }
+.glass .p-section-label { color: rgba(255,255,255,0.4); }
+
+/* Effet verre dépoli sur cover */
+.glass .p-cover-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom, transparent 50%, rgba(15,12,41,0.5));
+}
+
+/* ══════════════════════════════════════════════════
+   THÈME 2 — MIDNIGHT / SPOTIFY
+══════════════════════════════════════════════════ */
+.midnight .app-preview { background: #000; }
+.midnight .preview-sidebar {
+    background: #111;
+    border-right: 1px solid #222;
+}
+.midnight .preview-main { background: #000; }
+.midnight .p-top { color: #fff; border-bottom-color: #222; }
+.midnight .p-top-accent { color: #1db954; }
+.midnight .p-pl-dot { background: #1db954; }
+.midnight .p-playlist.active { background: #1a1a1a; color: #1db954; }
+.midnight .p-track.active {
+    background: #1a1a1a;
+    border-color: #282828;
+    color: #1db954;
+}
+.midnight .p-eq { color: #1db954; }
+.midnight .p-search-btn { background: #161616; border-color: #282828; color: #aaa; }
+.midnight .p-bar-wrap { background: #3a3a3a; }
+.midnight .p-bar-fill { background: #1db954; }
+.midnight .p-bar-thumb { background: #fff; }
+.midnight .p-ctrl { background: #161616; border-color: #282828; color: #fff; }
+.midnight .p-ctrl.main { background: #1db954; color: #000; }
+.midnight .theme-label { color: #1db954; }
+.midnight .p-section-label { color: #555; }
+.midnight .p-np-title { color: #fff; }
+.midnight .p-np-meta { color: #aaa; }
+
+/* ══════════════════════════════════════════════════
+   THÈME 3 — SUNSET / CHAUD
+══════════════════════════════════════════════════ */
+.sunset .app-preview { background: #1a1108; }
+.sunset .preview-sidebar {
+    background: #221608;
+    border-right: 1px solid #3d2a12;
+}
+.sunset .preview-main { background: #1a1108; }
+.sunset .p-top { color: #f0d9b0; border-bottom-color: #3d2a12; }
+.sunset .p-top-accent { color: #f59e0b; }
+.sunset .p-pl-dot { background: #f59e0b; }
+.sunset .p-playlist.active { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.sunset .p-track.active {
+    background: rgba(245,158,11,0.1);
+    border-color: rgba(245,158,11,0.25);
+    color: #f59e0b;
+}
+.sunset .p-eq { color: #f59e0b; }
+.sunset .p-search-btn { background: #2e1f0e; border-color: #5c3d1a; color: #a0845a; }
+.sunset .p-bar-wrap { background: #4a2e10; }
+.sunset .p-bar-fill { background: linear-gradient(to right, #f59e0b, #ef4444); }
+.sunset .p-bar-thumb { background: #f59e0b; }
+.sunset .p-ctrl { background: #2e1f0e; border-color: #5c3d1a; color: #f0d9b0; }
+.sunset .p-ctrl.main { background: #f59e0b; color: #1a1108; }
+.sunset .theme-label { color: #f59e0b; }
+.sunset .p-section-label { color: #7a5a30; }
+.sunset .p-np-title { color: #f0d9b0; }
+.sunset .p-np-meta { color: #a07840; }
+
+/* ══════════════════════════════════════════════════
+   THÈME 4 — NEON / CYBER
+══════════════════════════════════════════════════ */
+.cyber .app-preview { background: #020217; }
+.cyber .preview-sidebar {
+    background: #06062a;
+    border-right: 1px solid rgba(0,245,255,0.15);
+}
+.cyber .preview-main { background: #020217; }
+.cyber .p-top { color: #e0f4ff; border-bottom-color: rgba(0,245,255,0.15); }
+.cyber .p-top-accent { color: #00f5ff; text-shadow: 0 0 8px #00f5ff88; }
+.cyber .p-pl-dot { background: #00f5ff; box-shadow: 0 0 6px #00f5ff; }
+.cyber .p-playlist.active {
+    background: rgba(0,245,255,0.08);
+    color: #00f5ff;
+    text-shadow: 0 0 8px #00f5ff66;
+}
+.cyber .p-track.active {
+    background: rgba(0,245,255,0.07);
+    border-color: rgba(0,245,255,0.2);
+    color: #00f5ff;
+}
+.cyber .p-eq { color: #00f5ff; filter: drop-shadow(0 0 3px #00f5ff); }
+.cyber .p-search-btn { background: rgba(0,245,255,0.05); border-color: rgba(0,245,255,0.15); color: rgba(0,245,255,0.6); }
+.cyber .p-bar-wrap { background: rgba(0,245,255,0.12); }
+.cyber .p-bar-fill { background: linear-gradient(to right, #00f5ff, #ff2d78); box-shadow: 0 0 8px #00f5ff66; }
+.cyber .p-bar-thumb { background: #fff; box-shadow: 0 0 6px #00f5ff; }
+.cyber .p-ctrl {
+    background: rgba(0,245,255,0.05);
+    border-color: rgba(0,245,255,0.2);
+    color: #e0f4ff;
+}
+.cyber .p-ctrl.main {
+    background: #00f5ff;
+    color: #020217;
+    box-shadow: 0 0 20px #00f5ff66;
+}
+.cyber .theme-label { color: #00f5ff; text-shadow: 0 0 12px #00f5ff88; }
+.cyber .p-section-label { color: rgba(0,245,255,0.35); }
+.cyber .p-np-title { color: #e0f4ff; }
+.cyber .p-np-meta { color: rgba(0,245,255,0.45); }
+.cyber .p-cover { box-shadow: 0 0 20px rgba(0,245,255,0.2); }
+</style>
+</head>
+<body>
+
+<h1>YT Player — Aperçu des thèmes</h1>
+<p class="subtitle">Choisis ton design préféré</p>
+
+<div class="grid">
+
+    <!-- ── GLASS ── -->
+    <div class="theme-card glass">
+        <div class="theme-label">① Glassmorphism</div>
+        <div class="theme-desc">Panneaux vitrés floutés · Fond dégradé violet/indigo · Accent violet pâle</div>
+        <div class="app-preview">
+            <div class="preview-sidebar">
+                <div class="p-top">
+                    <span class="p-top-accent">♪ YT Player</span>
+                    <div class="p-top-right"><span style="opacity:.5">⚙</span></div>
+                </div>
+                <div class="p-section">
+                    <div class="p-section-label">Playlists</div>
+                    <div class="p-playlist active"><span class="p-pl-dot"></span>Ma playlist</div>
+                    <div class="p-playlist" style="opacity:.55"><span class="p-pl-dot" style="background:rgba(255,255,255,.2)"></span>Chill vibes</div>
+                </div>
+                <div class="p-tracks-section">
+                    <div class="p-section-label" style="padding-top:8px">Pistes</div>
+                    <div class="p-track-list">
+                        <div class="p-track active">
+                            <span class="p-t-num">1</span>
+                            <span class="p-eq"><span></span><span></span><span></span></span>
+                            <span class="p-t-name">Daft Punk — One More</span>
+                            <span class="p-t-dur">5:20</span>
+                        </div>
+                        <div class="p-track" style="opacity:.6">
+                            <span class="p-t-num">2</span>
+                            <span class="p-t-name">Kavinsky — Nightcall</span>
+                            <span class="p-t-dur">4:17</span>
+                        </div>
+                        <div class="p-track" style="opacity:.6">
+                            <span class="p-t-num">3</span>
+                            <span class="p-t-name">M83 — Midnight City</span>
+                            <span class="p-t-dur">4:03</span>
+                        </div>
+                        <div class="p-track" style="opacity:.6">
+                            <span class="p-t-num">4</span>
+                            <span class="p-t-name">Phoenix — Lisztomania</span>
+                            <span class="p-t-dur">3:32</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-search-btn">🔍 Rechercher</div>
+            </div>
+            <div class="preview-main">
+                <div class="p-cover">
+                    <img class="p-cover-img" src="https://i.ytimg.com/vi/GDpmVUEjagg/hqdefault.jpg" alt="" onerror="this.style.background='linear-gradient(135deg,#302b63,#24243e)'">
+                    <div class="p-cover-overlay"></div>
+                </div>
+                <div class="p-now">
+                    <div class="p-np-title" style="color:#e0d8ff">Daft Punk — One More Time</div>
+                    <div class="p-np-meta">Piste 1 / 4 — Ma playlist</div>
+                </div>
+                <div class="p-progress">
+                    <span class="p-time">2:03</span>
+                    <div class="p-bar-wrap">
+                        <div class="p-bar-fill"><div class="p-bar-thumb"></div></div>
+                    </div>
+                    <span class="p-time">5:20</span>
+                </div>
+                <div class="p-controls">
+                    <div class="p-ctrl">⏮</div>
+                    <div class="p-ctrl main">▶▶</div>
+                    <div class="p-ctrl">⏭</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MIDNIGHT ── -->
+    <div class="theme-card midnight">
+        <div class="theme-label">② Midnight / Spotify</div>
+        <div class="theme-desc">Fond noir pur · Vert électrique · Contraste maximum · Sobre</div>
+        <div class="app-preview">
+            <div class="preview-sidebar">
+                <div class="p-top">
+                    <span class="p-top-accent">♪ YT Player</span>
+                    <div class="p-top-right"><span style="opacity:.3">⚙</span></div>
+                </div>
+                <div class="p-section">
+                    <div class="p-section-label">Playlists</div>
+                    <div class="p-playlist active"><span class="p-pl-dot"></span>Ma playlist</div>
+                    <div class="p-playlist" style="opacity:.4"><span class="p-pl-dot" style="background:#333"></span>Chill vibes</div>
+                </div>
+                <div class="p-tracks-section">
+                    <div class="p-section-label" style="padding-top:8px">Pistes</div>
+                    <div class="p-track-list">
+                        <div class="p-track active">
+                            <span class="p-t-num">1</span>
+                            <span class="p-eq"><span></span><span></span><span></span></span>
+                            <span class="p-t-name">Daft Punk — One More</span>
+                            <span class="p-t-dur">5:20</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5">
+                            <span class="p-t-num">2</span>
+                            <span class="p-t-name">Kavinsky — Nightcall</span>
+                            <span class="p-t-dur">4:17</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5">
+                            <span class="p-t-num">3</span>
+                            <span class="p-t-name">M83 — Midnight City</span>
+                            <span class="p-t-dur">4:03</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5">
+                            <span class="p-t-num">4</span>
+                            <span class="p-t-name">Phoenix — Lisztomania</span>
+                            <span class="p-t-dur">3:32</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-search-btn">🔍 Rechercher</div>
+            </div>
+            <div class="preview-main">
+                <div class="p-cover">
+                    <img class="p-cover-img" src="https://i.ytimg.com/vi/GDpmVUEjagg/hqdefault.jpg" alt="" onerror="this.style.background='#111'">
+                </div>
+                <div class="p-now">
+                    <div class="p-np-title">Daft Punk — One More Time</div>
+                    <div class="p-np-meta">Piste 1 / 4 — Ma playlist</div>
+                </div>
+                <div class="p-progress">
+                    <span class="p-time">2:03</span>
+                    <div class="p-bar-wrap">
+                        <div class="p-bar-fill"><div class="p-bar-thumb"></div></div>
+                    </div>
+                    <span class="p-time">5:20</span>
+                </div>
+                <div class="p-controls">
+                    <div class="p-ctrl">⏮</div>
+                    <div class="p-ctrl main">▶▶</div>
+                    <div class="p-ctrl">⏭</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SUNSET ── -->
+    <div class="theme-card sunset">
+        <div class="theme-label">③ Sunset / Chaud</div>
+        <div class="theme-desc">Tons bruns & ambrés · Accent or/orange · Ambiance cosy vinyle</div>
+        <div class="app-preview">
+            <div class="preview-sidebar">
+                <div class="p-top">
+                    <span class="p-top-accent">♪ YT Player</span>
+                    <div class="p-top-right"><span style="opacity:.4; color:#a07840">⚙</span></div>
+                </div>
+                <div class="p-section">
+                    <div class="p-section-label">Playlists</div>
+                    <div class="p-playlist active"><span class="p-pl-dot"></span>Ma playlist</div>
+                    <div class="p-playlist" style="opacity:.45;color:#a07840"><span class="p-pl-dot" style="background:#5c3d1a"></span>Chill vibes</div>
+                </div>
+                <div class="p-tracks-section">
+                    <div class="p-section-label" style="padding-top:8px">Pistes</div>
+                    <div class="p-track-list">
+                        <div class="p-track active">
+                            <span class="p-t-num">1</span>
+                            <span class="p-eq"><span></span><span></span><span></span></span>
+                            <span class="p-t-name">Daft Punk — One More</span>
+                            <span class="p-t-dur">5:20</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5;color:#c09060">
+                            <span class="p-t-num">2</span>
+                            <span class="p-t-name">Kavinsky — Nightcall</span>
+                            <span class="p-t-dur">4:17</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5;color:#c09060">
+                            <span class="p-t-num">3</span>
+                            <span class="p-t-name">M83 — Midnight City</span>
+                            <span class="p-t-dur">4:03</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5;color:#c09060">
+                            <span class="p-t-num">4</span>
+                            <span class="p-t-name">Phoenix — Lisztomania</span>
+                            <span class="p-t-dur">3:32</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-search-btn">🔍 Rechercher</div>
+            </div>
+            <div class="preview-main">
+                <div class="p-cover">
+                    <img class="p-cover-img" src="https://i.ytimg.com/vi/GDpmVUEjagg/hqdefault.jpg" alt="" onerror="this.style.background='linear-gradient(135deg,#3d2008,#1a1108)'">
+                </div>
+                <div class="p-now">
+                    <div class="p-np-title">Daft Punk — One More Time</div>
+                    <div class="p-np-meta">Piste 1 / 4 — Ma playlist</div>
+                </div>
+                <div class="p-progress">
+                    <span class="p-time">2:03</span>
+                    <div class="p-bar-wrap">
+                        <div class="p-bar-fill"><div class="p-bar-thumb"></div></div>
+                    </div>
+                    <span class="p-time">5:20</span>
+                </div>
+                <div class="p-controls">
+                    <div class="p-ctrl">⏮</div>
+                    <div class="p-ctrl main">▶▶</div>
+                    <div class="p-ctrl">⏭</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── CYBER ── -->
+    <div class="theme-card cyber">
+        <div class="theme-label">④ Neon / Cyber</div>
+        <div class="theme-desc">Fond bleu nuit · Cyan + rose néon · Effets glow · Style synthwave</div>
+        <div class="app-preview">
+            <div class="preview-sidebar">
+                <div class="p-top">
+                    <span class="p-top-accent">♪ YT Player</span>
+                    <div class="p-top-right"><span style="opacity:.4;color:#00f5ff">⚙</span></div>
+                </div>
+                <div class="p-section">
+                    <div class="p-section-label">Playlists</div>
+                    <div class="p-playlist active"><span class="p-pl-dot"></span>Ma playlist</div>
+                    <div class="p-playlist" style="opacity:.4;color:#a0d4e0"><span class="p-pl-dot" style="background:rgba(0,245,255,0.2)"></span>Chill vibes</div>
+                </div>
+                <div class="p-tracks-section">
+                    <div class="p-section-label" style="padding-top:8px">Pistes</div>
+                    <div class="p-track-list">
+                        <div class="p-track active">
+                            <span class="p-t-num">1</span>
+                            <span class="p-eq"><span></span><span></span><span></span></span>
+                            <span class="p-t-name">Daft Punk — One More</span>
+                            <span class="p-t-dur">5:20</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5;color:#a0c8d8">
+                            <span class="p-t-num">2</span>
+                            <span class="p-t-name">Kavinsky — Nightcall</span>
+                            <span class="p-t-dur">4:17</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5;color:#a0c8d8">
+                            <span class="p-t-num">3</span>
+                            <span class="p-t-name">M83 — Midnight City</span>
+                            <span class="p-t-dur">4:03</span>
+                        </div>
+                        <div class="p-track" style="opacity:.5;color:#a0c8d8">
+                            <span class="p-t-num">4</span>
+                            <span class="p-t-name">Phoenix — Lisztomania</span>
+                            <span class="p-t-dur">3:32</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-search-btn">🔍 Rechercher</div>
+            </div>
+            <div class="preview-main">
+                <div class="p-cover">
+                    <img class="p-cover-img" src="https://i.ytimg.com/vi/GDpmVUEjagg/hqdefault.jpg" alt="" onerror="this.style.background='linear-gradient(135deg,#020217,#0d0d40)'">
+                </div>
+                <div class="p-now">
+                    <div class="p-np-title">Daft Punk — One More Time</div>
+                    <div class="p-np-meta">Piste 1 / 4 — Ma playlist</div>
+                </div>
+                <div class="p-progress">
+                    <span class="p-time">2:03</span>
+                    <div class="p-bar-wrap">
+                        <div class="p-bar-fill"><div class="p-bar-thumb"></div></div>
+                    </div>
+                    <span class="p-time">5:20</span>
+                </div>
+                <div class="p-controls">
+                    <div class="p-ctrl">⏮</div>
+                    <div class="p-ctrl main">▶▶</div>
+                    <div class="p-ctrl">⏭</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
