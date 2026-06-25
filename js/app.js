@@ -471,6 +471,13 @@ async function importPlaylist(listId) {
 // ── Worker-based audio streaming (arrière-plan natif) ────────────────────────
 let workerUrl      = null;
 let useNativeAudio = false;
+let previewTrack   = null; // piste en cours d'aperçu (non ajoutée à la playlist)
+
+function setPreviewTrack(track) {
+    previewTrack = track;
+    const btn = document.getElementById('btn-add-preview');
+    if (btn) btn.style.display = track ? '' : 'none';
+}
 
 async function fetchAudioStream(videoId) {
     if (!workerUrl) return null;
@@ -832,6 +839,7 @@ function clearTracks() {
 function playAt(realIdx) {
     const pl = activePL();
     if (!pl || realIdx < 0 || realIdx >= pl.tracks.length) return;
+    setPreviewTrack(null);
     state.trackIndex = realIdx;
     if (state.isShuffled) {
         const pos = state.shuffleOrder.indexOf(realIdx);
@@ -1225,6 +1233,7 @@ function renderSearchResults(results) {
             save();
             renderTracks();
             document.getElementById('track-meta').textContent = 'Aperçu — cliquez + pour ajouter';
+            setPreviewTrack({ videoId: vid, title, duration });
             hideSearchModal();
         });
     });
@@ -1519,6 +1528,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             localStorage.removeItem(WORKER_KEY);
             showToast('Worker URL supprimée.');
         }
+    });
+
+    document.getElementById('btn-add-preview')?.addEventListener('click', () => {
+        const pl = activePL();
+        if (!pl || !previewTrack) return;
+        if (pl.tracks.some(t => t.videoId === previewTrack.videoId)) {
+            showToast('Déjà dans la playlist.');
+            return;
+        }
+        pl.tracks.push({ id: uid(), videoId: previewTrack.videoId, title: previewTrack.title, duration: previewTrack.duration });
+        if (state.isShuffled) resetShuffle(pl.tracks.length);
+        save(); renderTracks();
+        showToast('✓ Ajouté à la playlist !');
+        setPreviewTrack(null);
     });
 
     document.getElementById('btn-save-token').addEventListener('click', () => {
