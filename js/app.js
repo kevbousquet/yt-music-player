@@ -1207,21 +1207,24 @@ function renderSearchResults(results) {
             <button class="btn-add-result" data-vid="${v.videoId}" data-title="${esc(v.title)}" data-dur="${v.lengthSeconds || 0}" title="Ajouter à la playlist sans lancer">+</button>
         </div>`).join('');
 
-    // Clic sur la ligne → ajouter + lancer immédiatement
+    // Clic sur la ligne → aperçu (lecture sans ajout permanent à la playlist)
     el.querySelectorAll('.search-result').forEach(row => {
         row.addEventListener('click', e => {
             if (e.target.closest('.btn-add-result')) return;
             const pl = activePL(); if (!pl) return;
             const { vid, title, dur } = row.dataset;
             const duration = parseInt(dur || '0');
-            let idx = pl.tracks.findIndex(t => t.videoId === vid);
-            if (idx < 0) {
-                idx = pl.tracks.length;
-                pl.tracks.push({ id: uid(), videoId: vid, title, duration });
-                if (state.isShuffled) resetShuffle(pl.tracks.length);
-                save();
-            }
-            playAt(idx);
+            // Piste temporaire pour que playAt fonctionne normalement
+            const tempIdx = pl.tracks.length;
+            pl.tracks.push({ id: uid(), videoId: vid, title, duration });
+            playAt(tempIdx);
+            // Retirer immédiatement : l'audio continue, la playlist reste inchangée
+            pl.tracks.splice(tempIdx, 1);
+            if (state.isShuffled) resetShuffle(pl.tracks.length);
+            state.trackIndex = -1;
+            save();
+            renderTracks();
+            document.getElementById('track-meta').textContent = 'Aperçu — cliquez + pour ajouter';
             hideSearchModal();
         });
     });
