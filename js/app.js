@@ -10,6 +10,7 @@ const DEFAULT_TOKEN    = '__SYNC_TOKEN__';
 const DEFAULT_YT_KEY   = atob('QUl6YVN5QkJieHdZc2EzbGJlaEhNcUJYdUZ4Xzczazg1TFBmWHhr');
 const WORKER_KEY       = 'ytplayer_worker_url';
 const DEFAULT_WORKER   = 'https://yt-music.kevbousquetagenda.workers.dev';
+const LAST_TRACK_KEY   = 'ytplayer_last_track';
 const COLORS           = ['#7c6af7','#e94560','#4ade80','#f0c040','#60a5fa','#f97316','#a78bfa','#fb7185'];
 
 let syncTimer        = null;
@@ -841,6 +842,11 @@ function playAt(realIdx) {
     if (!pl || realIdx < 0 || realIdx >= pl.tracks.length) return;
     setPreviewTrack(null);
     state.trackIndex = realIdx;
+    localStorage.setItem(LAST_TRACK_KEY, JSON.stringify({
+        profileId:  state.activeProfileId,
+        playlistId: activeProfile()?.activePlaylistId,
+        trackIndex: realIdx,
+    }));
     if (state.isShuffled) {
         const pos = state.shuffleOrder.indexOf(realIdx);
         state.shufflePos = pos !== -1 ? pos : 0;
@@ -1447,6 +1453,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedId = localStorage.getItem(PROFILE_KEY);
     if (savedId && state.profiles[savedId]) {
         selectProfile(savedId);
+        // Restaurer la dernière piste écoutée (sans relancer la lecture)
+        try {
+            const last = JSON.parse(localStorage.getItem(LAST_TRACK_KEY) || 'null');
+            if (last?.profileId === savedId) {
+                const prof = state.profiles[savedId];
+                const plId = last.playlistId || prof?.activePlaylistId;
+                const pl   = prof?.playlists?.[plId];
+                if (pl && last.trackIndex >= 0 && last.trackIndex < pl.tracks.length) {
+                    if (plId !== prof.activePlaylistId) {
+                        prof.activePlaylistId = plId;
+                    }
+                    state.trackIndex = last.trackIndex;
+                    shouldScrollToActive = true;
+                    renderNowPlaying();
+                    renderTracks();
+                }
+            }
+        } catch (_) {}
     } else {
         showProfileScreen();
     }
