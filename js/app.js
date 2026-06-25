@@ -1195,23 +1195,51 @@ function renderSearchResults(results) {
     const el = document.getElementById('search-results');
     if (!results?.length) { el.innerHTML = '<p class="empty">Aucun résultat.</p>'; return; }
     el.innerHTML = results.slice(0, 15).map(v => `
-        <div class="search-result">
-            <img class="result-thumb" src="https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg" loading="lazy" alt="">
+        <div class="search-result" data-vid="${v.videoId}" data-title="${esc(v.title)}" data-dur="${v.lengthSeconds || 0}">
+            <div class="result-thumb-wrap">
+                <img class="result-thumb" src="https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg" loading="lazy" alt="">
+                <div class="result-play-overlay">&#9654;</div>
+            </div>
             <div class="result-info">
                 <div class="result-title">${esc(v.title)}</div>
                 <div class="result-meta">${esc(v.author)} · ${formatDuration(v.lengthSeconds)}</div>
             </div>
-            <button class="btn-add-result" data-vid="${v.videoId}" data-title="${esc(v.title)}" data-dur="${v.lengthSeconds || 0}" title="Ajouter à la playlist">+</button>
+            <button class="btn-add-result" data-vid="${v.videoId}" data-title="${esc(v.title)}" data-dur="${v.lengthSeconds || 0}" title="Ajouter à la playlist sans lancer">+</button>
         </div>`).join('');
 
-    el.querySelectorAll('.btn-add-result').forEach(btn => {
-        btn.addEventListener('click', () => {
+    // Clic sur la ligne → ajouter + lancer immédiatement
+    el.querySelectorAll('.search-result').forEach(row => {
+        row.addEventListener('click', e => {
+            if (e.target.closest('.btn-add-result')) return;
             const pl = activePL(); if (!pl) return;
+            const { vid, title, dur } = row.dataset;
+            const duration = parseInt(dur || '0');
+            let idx = pl.tracks.findIndex(t => t.videoId === vid);
+            if (idx < 0) {
+                idx = pl.tracks.length;
+                pl.tracks.push({ id: uid(), videoId: vid, title, duration });
+                if (state.isShuffled) resetShuffle(pl.tracks.length);
+                save();
+            }
+            playAt(idx);
+            hideSearchModal();
+        });
+    });
+
+    // Bouton + → ajouter sans lancer
+    el.querySelectorAll('.btn-add-result').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            const pl = activePL(); if (!pl) return;
+            if (pl.tracks.some(t => t.videoId === btn.dataset.vid)) {
+                btn.textContent = '✓'; btn.classList.add('added');
+                setTimeout(() => { btn.textContent = '+'; btn.classList.remove('added'); }, 1500);
+                return;
+            }
             pl.tracks.push({ id: uid(), videoId: btn.dataset.vid, title: btn.dataset.title, duration: parseInt(btn.dataset.dur || '0') });
             if (state.isShuffled) resetShuffle(pl.tracks.length);
             save(); renderTracks();
-            btn.textContent = '✓';
-            btn.classList.add('added');
+            btn.textContent = '✓'; btn.classList.add('added');
             setTimeout(() => { btn.textContent = '+'; btn.classList.remove('added'); }, 1500);
         });
     });
