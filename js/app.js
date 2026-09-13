@@ -764,6 +764,21 @@ function switchPlaylist(id) {
 }
 
 // ── Track actions ─────────────────────────────────────────────────────────────
+// Ajoute une piste en tête de playlist (découverte → écoute rapide, pas en fin de file).
+function prependTrack(pl, track) {
+    pl.tracks.unshift(track);
+    if (state.trackIndex >= 0 && activePL() === pl) {
+        state.trackIndex++;
+        try {
+            const last = JSON.parse(localStorage.getItem(LAST_TRACK_KEY) || 'null');
+            if (last && last.profileId === state.activeProfileId && last.playlistId === pl.id) {
+                last.trackIndex = state.trackIndex;
+                localStorage.setItem(LAST_TRACK_KEY, JSON.stringify(last));
+            }
+        } catch (_) {}
+    }
+}
+
 // ── Durée vidéo ───────────────────────────────────────────────────────────────
 function parseIsoDuration(iso) {
     if (!iso) return 0;
@@ -787,27 +802,27 @@ function addTrack(rawUrl, customTitle) {
     const pl = activePL(); if (!pl) return;
     const vid = extractVideoId(rawUrl.trim());
     if (!vid) { alert('Lien YouTube non reconnu.\nEx: https://www.youtube.com/watch?v=…'); return; }
-    const idx = pl.tracks.length;
-    pl.tracks.push({ id: uid(), videoId: vid, title: customTitle.trim() || 'Chargement…', duration: 0 });
+    const track = { id: uid(), videoId: vid, title: customTitle.trim() || 'Chargement…', duration: 0 };
+    prependTrack(pl, track);
     if (state.isShuffled) resetShuffle(pl.tracks.length);
     save(); renderTracks();
     const profId = state.activeProfileId;
     const plId   = activeProfile()?.activePlaylistId;
-    fetchTitleAndDuration(vid, profId, plId, idx, !customTitle.trim());
+    fetchTitleAndDuration(vid, profId, plId, track.id, !customTitle.trim());
 }
 
-async function fetchTitleAndDuration(vid, profId, plId, idx, fetchTitle) {
-    const getTrack = () => state.profiles[profId]?.playlists[plId]?.tracks[idx];
+async function fetchTitleAndDuration(vid, profId, plId, trackId, fetchTitle) {
+    const getTrack = () => state.profiles[profId]?.playlists[plId]?.tracks.find(t => t.id === trackId);
 
     if (fetchTitle) {
         try {
             const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`);
             const d = r.ok ? await r.json() : null;
             const t = getTrack();
-            if (t) { t.title = d?.title || `Piste ${idx + 1}`; save(); renderTracks(); }
+            if (t) { t.title = d?.title || 'Nouvelle piste'; save(); renderTracks(); }
         } catch (_) {
             const t = getTrack();
-            if (t?.title === 'Chargement…') { t.title = `Piste ${idx + 1}`; save(); renderTracks(); }
+            if (t?.title === 'Chargement…') { t.title = 'Nouvelle piste'; save(); renderTracks(); }
         }
     }
 
@@ -1312,7 +1327,7 @@ function renderSearchResults(results) {
                 setTimeout(() => { btn.textContent = '+'; btn.classList.remove('added'); }, 1500);
                 return;
             }
-            pl.tracks.push({ id: uid(), videoId: btn.dataset.vid, title: btn.dataset.title, duration: parseInt(btn.dataset.dur || '0') });
+            prependTrack(pl, { id: uid(), videoId: btn.dataset.vid, title: btn.dataset.title, duration: parseInt(btn.dataset.dur || '0') });
             if (state.isShuffled) resetShuffle(pl.tracks.length);
             save(); renderTracks();
             btn.textContent = '✓'; btn.classList.add('added');
@@ -1631,7 +1646,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             showToast('Déjà dans la playlist.');
             return;
         }
-        pl.tracks.push({ id: uid(), videoId: previewTrack.videoId, title: previewTrack.title, duration: previewTrack.duration });
+        prependTrack(pl, { id: uid(), videoId: previewTrack.videoId, title: previewTrack.title, duration: previewTrack.duration });
         if (state.isShuffled) resetShuffle(pl.tracks.length);
         save(); renderTracks();
         showToast('✓ Ajouté à la playlist !');
