@@ -1313,7 +1313,6 @@ function renderSearchResults(results) {
             renderTracks();
             document.getElementById('track-meta').textContent = 'Aperçu — cliquez + pour ajouter';
             setPreviewTrack({ videoId: vid, title, duration });
-            hideSearchModal();
         });
     });
 
