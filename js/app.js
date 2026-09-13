@@ -678,6 +678,7 @@ function selectProfile(id) {
     state.shufflePos      = -1;
     localStorage.setItem(PROFILE_KEY, id);
     hideProfileScreen();
+    setMobileView('home');
     render();
     // Web Share Target
     if (window._pendingShareUrl) {
@@ -747,7 +748,7 @@ function delPlaylist(id) {
 function renamePlaylist(id, name) {
     const p = activeProfile(); if (!p || !name.trim()) return;
     p.playlists[id].name = name.trim();
-    save(); renderPlaylists();
+    save(); renderPlaylists(); renderPlaylistCards();
 }
 
 function switchPlaylist(id) {
@@ -925,8 +926,13 @@ function resetShuffle(length) {
     state.shufflePos   = 0;
 }
 
+// ── Navigation mobile (accueil / playlist) ──────────────────────────────────────
+function setMobileView(view) {
+    document.body.classList.toggle('mv-playlist', view === 'playlist');
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
-function render() { renderProfileBadge(); renderPlaylists(); renderTracks(); renderNowPlaying(); }
+function render() { renderProfileBadge(); renderPlaylists(); renderMobilePlaylistHeader(); renderTracks(); renderNowPlaying(); }
 
 function renderProfileBadge() {
     const btn = document.getElementById('profile-badge');
@@ -963,9 +969,56 @@ function renderPlaylists() {
     container.querySelectorAll('.btn-del-pl').forEach(btn => btn.addEventListener('click', () => delPlaylist(btn.dataset.id)));
 }
 
+function renderPlaylistCards() {
+    const p         = activeProfile();
+    const container = document.getElementById('playlist-cards');
+    if (!container) return;
+    if (!p) { container.innerHTML = ''; return; }
+    container.innerHTML = Object.values(p.playlists).map(pl => `
+        <div class="pl-card" data-id="${pl.id}">
+            <div class="pl-card-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H8"></path><path d="M21 12H8"></path><path d="M21 18H8"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
+            </div>
+            <div class="pl-card-info">
+                <div class="pl-card-name">${esc(pl.name)}</div>
+                <div class="pl-card-count">${pl.tracks.length} piste${pl.tracks.length > 1 ? 's' : ''}</div>
+            </div>
+            <svg class="pl-card-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg>
+        </div>`).join('');
+    container.querySelectorAll('.pl-card').forEach(card => {
+        card.addEventListener('click', () => {
+            switchPlaylist(card.dataset.id);
+            setMobileView('playlist');
+        });
+    });
+}
+
+function renderMobilePlaylistHeader() {
+    const pl        = activePL();
+    const titleEl   = document.getElementById('mobile-pl-title');
+    const countEl   = document.getElementById('mobile-pl-count');
+    if (!titleEl || !countEl) return;
+    titleEl.textContent = pl?.name || '–';
+    countEl.textContent = pl ? `${pl.tracks.length} piste${pl.tracks.length > 1 ? 's' : ''}` : '';
+}
+
+function renderMiniPlayer() {
+    const el = document.getElementById('mini-player');
+    if (!el) return;
+    const pl = activePL();
+    const t  = pl && state.trackIndex >= 0 ? pl.tracks[state.trackIndex] : null;
+    if (!t) { el.classList.remove('has-track'); return; }
+    el.classList.add('has-track');
+    document.getElementById('mini-cover').src   = `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg`;
+    document.getElementById('mini-title').textContent = t.title;
+    document.getElementById('mini-meta').textContent  = pl.name;
+    document.getElementById('mini-play-btn').innerHTML = isPlaying ? '&#9646;&#9646;' : '&#9654;';
+}
+
 function renderTracks() {
     const pl = activePL();
     const el = document.getElementById('track-list');
+    renderPlaylistCards();
     if (!pl?.tracks.length) { el.innerHTML = '<p class="empty">Aucune piste — collez un lien YouTube ci-dessous.</p>'; return; }
     el.dataset.playing = isPlaying ? '1' : '0';
 
@@ -1060,11 +1113,14 @@ function renderNowPlaying() {
     const titleEl = document.getElementById('track-title');
     const metaEl  = document.getElementById('track-meta');
     if (!pl || state.trackIndex < 0 || !pl.tracks[state.trackIndex]) {
-        titleEl.textContent = '–'; metaEl.textContent = ''; return;
+        titleEl.textContent = '–'; metaEl.textContent = '';
+        renderMiniPlayer();
+        return;
     }
     const t = pl.tracks[state.trackIndex];
     titleEl.textContent = t.title;
     metaEl.textContent  = `Piste ${state.trackIndex + 1} / ${pl.tracks.length}  —  ${pl.name}`;
+    renderMiniPlayer();
 }
 
 function showToast(msg) {
@@ -1079,6 +1135,8 @@ function setPlayBtn(playing) {
     document.getElementById('btn-play-pause').innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
     const tl = document.getElementById('track-list');
     if (tl) tl.dataset.playing = playing ? '1' : '0';
+    const miniBtn = document.getElementById('mini-play-btn');
+    if (miniBtn) miniBtn.innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
 }
 
 // ── Profile screen ────────────────────────────────────────────────────────────
@@ -1522,6 +1580,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('profile-badge').addEventListener('click', showProfileScreen);
+
+    // ── Navigation mobile (accueil / playlist) ──
+    document.getElementById('btn-mobile-back')?.addEventListener('click', () => setMobileView('home'));
+
+    document.getElementById('mini-play-btn')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const loaded = document.getElementById('player-placeholder').style.display === 'none';
+        if (!loaded && state.trackIndex >= 0) playAt(state.trackIndex);
+        else togglePlayPause();
+    });
+
+    document.getElementById('mini-player')?.addEventListener('click', () => setMobileView('playlist'));
 
     // Bouton ⚙ : ouvre la modale de sync
     function openSyncModal() {

@@ -121,6 +121,14 @@
     <div class="app">
 
         <aside class="sidebar">
+            <div id="mobile-playlist-header" class="mobile-pl-header">
+                <button class="btn-icon" id="btn-mobile-back" title="Retour à l'accueil">&#8249;</button>
+                <div class="mobile-pl-header-text">
+                    <div id="mobile-pl-title" class="mobile-pl-title">–</div>
+                    <div id="mobile-pl-count" class="mobile-pl-count"></div>
+                </div>
+            </div>
+
             <div class="sidebar-top">
                 <span class="app-title">&#9835; YT Player</span>
                 <button class="profile-badge" id="profile-badge" title="Changer de profil"></button>
@@ -128,20 +136,19 @@
                 <span class="sync-dot" id="sync-status" title="Statut sync"></span>
             </div>
 
-            <div class="section">
+            <div class="section" id="playlists-section">
                 <div class="section-header">
                     <span class="section-label">PLAYLISTS</span>
                     <button class="btn-icon" id="btn-new-playlist" title="Nouvelle playlist">+</button>
                 </div>
                 <div class="playlist-tabs" id="playlist-tabs"></div>
+                <div class="playlist-cards" id="playlist-cards"></div>
             </div>
 
             <div class="section tracks-section">
                 <div class="section-header">
                     <span class="section-label">PISTES</span>
                     <div class="track-actions">
-                        <button class="btn-icon" id="btn-shuffle" title="Lecture aléatoire">&#8652;</button>
-                        <button class="btn-icon" id="btn-repeat" title="Répétition désactivée" data-mode="0">&#8635;</button>
                         <button class="btn-icon danger" id="btn-clear" title="Vider la playlist">&#8998;</button>
                     </div>
                 </div>
@@ -187,9 +194,11 @@
                 </div>
 
                 <div class="controls">
+                    <button class="btn-icon ctrl-btn-sm" id="btn-shuffle" title="Lecture aléatoire">&#8652;</button>
                     <button class="ctrl-btn" id="btn-prev" title="Précédent">&#9198;</button>
                     <button class="ctrl-btn ctrl-main" id="btn-play-pause" title="Lecture / Pause">&#9654;</button>
                     <button class="ctrl-btn" id="btn-next" title="Suivant">&#9197;</button>
+                    <button class="btn-icon ctrl-btn-sm" id="btn-repeat" title="Répétition désactivée" data-mode="0">&#8635;</button>
                 </div>
 
                 <div class="volume-wrap">
@@ -208,6 +217,16 @@
             </div>
         </main>
 
+    </div>
+
+    <!-- ── Mini-lecteur persistant (accueil mobile) ── -->
+    <div id="mini-player" class="mini-player">
+        <img id="mini-cover" class="mini-cover" alt="">
+        <div class="mini-info">
+            <div id="mini-title" class="mini-title">–</div>
+            <div id="mini-meta" class="mini-meta"></div>
+        </div>
+        <button id="mini-play-btn" class="mini-play-btn" title="Lecture / Pause">&#9654;</button>
     </div>
 
     <script src="https://www.youtube.com/iframe_api"></script>

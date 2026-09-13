@@ -195,6 +195,96 @@ body {
 }
 .profile-badge:hover { transform: scale(1.1); opacity: .85; }
 
+/* ── Mobile view toggle (accueil / playlist) — masqué par défaut, activé en media query ── */
+#playlist-cards, #mobile-playlist-header, #mini-player { display: none; }
+
+/* ── Cartes de playlist (accueil mobile) ── */
+.pl-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    cursor: pointer;
+    transition: border-color .12s;
+}
+.pl-card:hover { border-color: var(--accent); }
+
+.pl-card-icon {
+    width: 40px; height: 40px;
+    border-radius: var(--r);
+    background: var(--sidebar);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+
+.pl-card-info { flex: 1; min-width: 0; }
+.pl-card-name {
+    font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pl-card-count { font-size: 12px; color: var(--dim); }
+
+.pl-card-chevron { color: var(--dim); flex-shrink: 0; }
+
+/* ── En-tête mobile de la vue playlist ── */
+.mobile-pl-header {
+    align-items: center;
+    gap: 12px;
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.mobile-pl-header-text { flex: 1; min-width: 0; }
+.mobile-pl-title {
+    font-size: 16px; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mobile-pl-count { font-size: 11px; color: var(--dim); }
+
+/* ── Mini-lecteur persistant (accueil mobile) ── */
+.mini-player {
+    position: fixed;
+    left: 12px; right: 12px; bottom: 14px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    box-shadow: 0 8px 28px rgba(0,0,0,.55);
+    z-index: 50;
+    cursor: pointer;
+}
+.mini-cover {
+    width: 44px; height: 44px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: var(--sidebar);
+    flex-shrink: 0;
+}
+.mini-info { flex: 1; min-width: 0; }
+.mini-title {
+    font-size: 13px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mini-meta { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-play-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #000;
+    font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
 /* ── Sidebar ── */
 .sidebar {
     width: 320px;
@@ -775,6 +865,13 @@ mark {
 .ctrl-main:hover { background: #00d4e8; border-color: #00d4e8; color: #000; }
 .ctrl-main:active { background: #00b8cc; }
 
+.ctrl-btn-sm {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    font-size: 15px;
+}
+
 /* ── Hint ── */
 .shortcuts-hint {
     font-size: 11px;
@@ -1121,4 +1218,25 @@ kbd {
         font-size: 22px;
         flex-shrink: 0;
     }
+
+    /* ── Navigation accueil / playlist ── */
+    .controls { gap: 8px; }
+
+    .sidebar-top       { order: 0; }
+    .add-form          { order: 1; }   /* remonte juste sous la barre du haut */
+    #playlists-section { order: 2; }
+    .tracks-section    { order: 3; display: none; }
+
+    #playlist-cards { display: flex; flex-direction: column; gap: 8px; }
+    .playlist-tabs  { display: none; }  /* remplacés par les cartes sur mobile */
+    .main           { display: none; } /* remplacé par le mini-lecteur en accueil */
+
+    body.mv-playlist #mobile-playlist-header { display: flex; }
+    body.mv-playlist .sidebar-top,
+    body.mv-playlist #playlists-section,
+    body.mv-playlist .add-form            { display: none; }
+    body.mv-playlist .tracks-section      { display: flex; }
+    body.mv-playlist .main                { display: flex; }
+    body.mv-playlist #mini-player         { display: none !important; }
+    body:not(.mv-playlist) #mini-player.has-track { display: flex; }
 }
