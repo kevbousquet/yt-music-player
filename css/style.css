@@ -1115,7 +1115,7 @@ kbd {
 @media (max-width: 640px) {
 
     /* ── Layout principal : colonne ── */
-    body { overflow: auto; height: auto; }
+    body { overflow: auto; overflow-x: hidden; height: auto; }
 
     .app {
         flex-direction: column;
@@ -1229,14 +1229,29 @@ kbd {
 
     #playlist-cards { display: flex; flex-direction: column; gap: 8px; }
     .playlist-tabs  { display: none; }  /* remplacés par les cartes sur mobile */
-    .main           { display: none; } /* remplacé par le mini-lecteur en accueil */
+
+    /* Accueil : le lecteur (donc l'iframe YouTube #yt-player) reste "affiché"
+       mais déporté hors écran, plutôt qu'en display:none — un iframe YouTube
+       en display:none est fortement ralenti/throttlé par le navigateur, ce qui
+       rendait le démarrage d'une piste anormalement long depuis l'accueil. */
+    .main {
+        position: fixed;
+        top: 0;
+        left: -9999px;
+        width: 375px;
+    }
 
     body.mv-playlist #mobile-playlist-header { display: flex; }
     body.mv-playlist .sidebar-top,
     body.mv-playlist #playlists-section,
     body.mv-playlist .add-form            { display: none; }
     body.mv-playlist .tracks-section      { display: flex; }
-    body.mv-playlist .main                { display: flex; }
+    body.mv-playlist .main {
+        position: static;
+        left: auto;
+        width: auto;
+        display: flex;
+    }
     body.mv-playlist #mini-player         { display: none !important; }
     body:not(.mv-playlist) #mini-player.has-track { display: flex; }
 }
