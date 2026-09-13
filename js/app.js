@@ -532,8 +532,27 @@ audioEl.addEventListener('pause', () => {
 let ytPlayer     = null;
 let ytPlayerReady = false;
 let pendingVideoId = null;
+const bootTime = Date.now();
+let ytApiRetries = 0;
+
+// Filet de sécurité : si le script https://www.youtube.com/iframe_api n'a
+// jamais pu se charger (réseau, bloqueur…), ytPlayerReady reste bloqué à
+// false pour toujours et plus aucune piste ne peut démarrer, sans message
+// d'erreur — l'utilisateur devait relancer l'app pour retenter le chargement.
+// On recharge nous-mêmes le script après quelques secondes si besoin.
+function ensureYouTubeApiLoaded() {
+    if (window.YT?.Player || Date.now() - bootTime < 4000) return;
+    if (ytApiRetries >= 3) { showToast('Lecteur YouTube indisponible — rechargez la page.'); return; }
+    ytApiRetries++;
+    document.getElementById('yt-iframe-api-script')?.remove();
+    const s = document.createElement('script');
+    s.id  = 'yt-iframe-api-script';
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+}
 
 window.onYouTubeIframeAPIReady = function () {
+    if (ytPlayer) return; // déjà initialisé (ex. après un rechargement du script)
     ytPlayer = new YT.Player('yt-player', {
         height: '200',
         width:  '100%',
@@ -1420,7 +1439,12 @@ async function loadVideo(videoId, durationSec) {
     if (coverEl) coverEl.style.display = 'none';
     const ytBox = document.getElementById('yt-player');
     if (ytBox) ytBox.style.display = '';
-    if (!ytPlayerReady) { pendingVideoId = videoId; return; }
+    if (!ytPlayerReady) {
+        pendingVideoId = videoId;
+        ensureYouTubeApiLoaded();
+        setTimeout(() => { if (!ytPlayerReady && pendingVideoId === videoId) ensureYouTubeApiLoaded(); }, 4000);
+        return;
+    }
     ytPlayer.loadVideoById(videoId);
 }
 

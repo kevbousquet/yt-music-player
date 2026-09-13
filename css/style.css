@@ -1231,14 +1231,21 @@ kbd {
     .playlist-tabs  { display: none; }  /* remplacés par les cartes sur mobile */
 
     /* Accueil : le lecteur (donc l'iframe YouTube #yt-player) reste "affiché"
-       mais déporté hors écran, plutôt qu'en display:none — un iframe YouTube
-       en display:none est fortement ralenti/throttlé par le navigateur, ce qui
-       rendait le démarrage d'une piste anormalement long depuis l'accueil. */
+       et à l'intérieur du viewport, réduit à 1×1px plutôt qu'en display:none
+       ou déporté hors écran — un iframe YouTube qui n'intersecte plus du tout
+       le viewport peut être ralenti/throttlé par le navigateur, ce qui rendait
+       le démarrage d'une piste anormalement long (voire bloqué) depuis
+       l'accueil. */
     .main {
         position: fixed;
         top: 0;
-        left: -9999px;
-        width: 375px;
+        left: 0;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        z-index: -1;
     }
 
     body.mv-playlist #mobile-playlist-header { display: flex; }
@@ -1248,8 +1255,12 @@ kbd {
     body.mv-playlist .tracks-section      { display: flex; }
     body.mv-playlist .main {
         position: static;
-        left: auto;
         width: auto;
+        height: auto;
+        overflow: visible;
+        opacity: 1;
+        pointer-events: auto;
+        z-index: auto;
         display: flex;
     }
     body.mv-playlist #mini-player         { display: none !important; }
